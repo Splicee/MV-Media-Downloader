@@ -1,0 +1,44 @@
+name: Vydání
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag vydání, například v3.0.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Aktuální yt-dlp
+        shell: powershell
+        run: Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "tools/yt-dlp.exe"
+      - name: Testy
+        shell: cmd
+        run: test.cmd
+      - name: Balíček
+        shell: cmd
+        run: package.cmd
+      - name: GitHub Release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @("release/MV-Media-Downloader-win-x64.zip", "release/MV-Media-Downloader-win-x64.zip.sha256")
+          gh release view "$env:RELEASE_TAG" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload "$env:RELEASE_TAG" $assets --clobber
+          } else {
+            gh release create "$env:RELEASE_TAG" $assets --title "MV Media Downloader $env:RELEASE_TAG" --generate-notes --verify-tag
+          }

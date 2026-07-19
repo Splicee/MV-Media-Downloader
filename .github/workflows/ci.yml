@@ -1,0 +1,18 @@
+name: Kontrola
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Testy
+        shell: cmd
+        run: test.cmd
+      - name: Sestavení
+        shell: cmd
+        run: build.cmd

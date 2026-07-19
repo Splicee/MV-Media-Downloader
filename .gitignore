@@ -1,0 +1,14 @@
+dist/
+release/
+artifacts/
+.publish-tools/
+data/
+joj-chrome-profile/
+settings.ini
+*.log
+Login Data*
+Cookies
+tools/yt-dlp.exe
+*.user
+*.suo
+*.tmp
