@@ -45,6 +45,7 @@ namespace MVMediaStudio
         {
             Grid page = new Grid();
             ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+            ConfigurePageScroll(scroll);
             StackPanel content = new StackPanel { Margin = new Thickness(32, 28, 32, 34), MaxWidth = 1160, HorizontalAlignment = HorizontalAlignment.Center };
             scroll.Content = content;
             page.Children.Add(scroll);

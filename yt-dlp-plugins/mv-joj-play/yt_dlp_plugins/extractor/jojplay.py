@@ -1,6 +1,7 @@
 import json
 import re
-from urllib.parse import urljoin
+import time
+from urllib.parse import urlencode, urljoin
 
 from yt_dlp.extractor.common import InfoExtractor
 from yt_dlp.utils import ExtractorError, determine_ext, url_or_none
@@ -11,41 +12,28 @@ class JojPlayIE(InfoExtractor):
     _VALID_URL = r'https?://play\.joj\.sk/player/(?P<id>[A-Za-z0-9_-]+)'
     _TENANT_ID = 'XEpbY0V54AE34rFO7dB2-i9m04'
     _AUTH_URL = 'https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken'
+    _REFRESH_URL = 'https://securetoken.googleapis.com/v1/token'
     _SOURCE_URL = 'https://europe-west3-tivio-production.cloudfunctions.net/getSourceUrl'
     _VIDEO_DOCUMENT_URL = 'https://firestore.googleapis.com/v1/projects/tivio-production/databases/(default)/documents/videos/'
     _VIDEO_QUERY_URL = 'https://firestore.googleapis.com/v1/projects/tivio-production/databases/(default)/documents:runQuery'
     _PLAYER_URL = 'https://play.joj.sk/'
     _RUNTIME_API_KEY = None
+    _ID_TOKEN = None
+    _REFRESH_TOKEN = None
+    _TOKEN_EXPIRES_AT = 0
 
     def _real_extract(self, url):
         requested_id = self._match_id(url)
         custom_token_cookie = self._get_cookies(self._PLAYER_URL).get('tivio-custom-token')
-        if not custom_token_cookie or not custom_token_cookie.value:
+        custom_token = custom_token_cookie.value if custom_token_cookie and custom_token_cookie.value else None
+        if not custom_token and not self._ID_TOKEN and not self._REFRESH_TOKEN:
             raise ExtractorError(
                 'JOJ Play vyžaduje přihlášení. V aplikaci zaškrtni "Přihlášení z Chrome" '
                 'a zkontroluj, že jsi v Chrome přihlášený na play.joj.sk.',
                 expected=True)
 
         api_key = self._runtime_api_key(requested_id)
-
-        auth = self._download_json(
-            self._AUTH_URL,
-            requested_id,
-            note='Ověřuji přihlášení JOJ Play',
-            query={'key': api_key},
-            data=json.dumps({
-                'token': custom_token_cookie.value,
-                'returnSecureToken': True,
-                'tenantId': self._TENANT_ID,
-            }).encode(),
-            headers={'Content-Type': 'application/json'},
-            fatal=False)
-        id_token = auth.get('idToken') if isinstance(auth, dict) else None
-        if not id_token:
-            raise ExtractorError(
-                'Přihlášení JOJ Play z Chrome není platné. Otevři play.joj.sk v Chrome, '
-                'znovu se přihlas a opakuj stažení.',
-                expected=True)
+        id_token = self._session_token(custom_token, api_key, requested_id)
 
         video_id = self._resolve_video_id(requested_id, id_token, api_key)
 
@@ -188,6 +176,61 @@ class JojPlayIE(InfoExtractor):
         raise ExtractorError(
             'JOJ Play nezverejnil pouzitelnou konfiguraci prehravace. Aktualizuj yt-dlp a aplikaci.',
             expected=True)
+
+    def _session_token(self, custom_token, api_key, video_id):
+        now = time.time()
+        if self._ID_TOKEN and now < self._TOKEN_EXPIRES_AT - 90:
+            return self._ID_TOKEN
+
+        if self._REFRESH_TOKEN:
+            refreshed = self._download_json(
+                self._REFRESH_URL,
+                video_id,
+                note='Obnovuji prihlaseni JOJ Play pro dalsi dil',
+                query={'key': api_key},
+                data=urlencode({
+                    'grant_type': 'refresh_token',
+                    'refresh_token': self._REFRESH_TOKEN,
+                }).encode(),
+                headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                fatal=False)
+            id_token = refreshed.get('id_token') if isinstance(refreshed, dict) else None
+            if id_token:
+                self._remember_session(refreshed, id_token, now)
+                return id_token
+
+        auth = self._download_json(
+            self._AUTH_URL,
+            video_id,
+            note='Ověřuji přihlášení JOJ Play',
+            query={'key': api_key},
+            data=json.dumps({
+                'token': custom_token,
+                'returnSecureToken': True,
+                'tenantId': self._TENANT_ID,
+            }).encode(),
+            headers={'Content-Type': 'application/json'},
+            fatal=False) if custom_token else None
+        id_token = auth.get('idToken') if isinstance(auth, dict) else None
+        if not id_token:
+            raise ExtractorError(
+                'Přihlášení JOJ Play z Chrome není platné. Otevři play.joj.sk v Chrome, '
+                'znovu se přihlas a opakuj stažení.',
+                expected=True)
+
+        self._remember_session(auth, id_token, now)
+        return id_token
+
+    def _remember_session(self, response, id_token, now):
+        self._ID_TOKEN = id_token
+        refresh_token = response.get('refreshToken') or response.get('refresh_token')
+        if refresh_token:
+            self._REFRESH_TOKEN = refresh_token
+        try:
+            lifetime = max(300, int(response.get('expiresIn') or response.get('expires_in') or 3600))
+        except (TypeError, ValueError):
+            lifetime = 3600
+        self._TOKEN_EXPIRES_AT = now + lifetime
 
     @staticmethod
     def _fill_joj_format_metadata(formats):

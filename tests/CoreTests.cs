@@ -16,12 +16,24 @@ namespace MVMediaStudio.Tests
             Equal("abc", ArgumentUtilities.Quote("abc"), "jednoduchý argument");
             Equal("\"a b\"", ArgumentUtilities.Quote("a b"), "argument s mezerou");
             TestDownloadUrlParser();
+            TestScrollWheel();
             TestDownloadPreset();
             TestJojResolver();
             TestConversion();
             TestUpdateMetadata();
             Console.WriteLine(failures == 0 ? "Všechny testy prošly." : "Počet chyb: " + failures);
             return failures == 0 ? 0 : 1;
+        }
+
+        private static void TestScrollWheel()
+        {
+            int remainder = 0;
+            Equal("0", ScrollWheelTuning.ConsumeSteps(ref remainder, -30).ToString(), "jemný impuls ještě neposouvá");
+            Equal("0", ScrollWheelTuning.ConsumeSteps(ref remainder, -30).ToString(), "druhý jemný impuls se sčítá");
+            Equal("0", ScrollWheelTuning.ConsumeSteps(ref remainder, -30).ToString(), "třetí jemný impuls se sčítá");
+            Equal("-1", ScrollWheelTuning.ConsumeSteps(ref remainder, -30).ToString(), "úplný krok posune jednou");
+            Equal("0", remainder.ToString(), "po úplném kroku nezůstane přebytek");
+            Equal("2", ScrollWheelTuning.ConsumeSteps(ref remainder, 240).ToString(), "dva kroky se zachovají");
         }
 
         private static void TestDownloadUrlParser()

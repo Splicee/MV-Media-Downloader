@@ -139,7 +139,7 @@ namespace MVMediaStudio
             footerStatus = Text("Připraveno", 11.5, Theme.Muted);
             footerStatus.VerticalAlignment = VerticalAlignment.Center;
             footer.Children.Add(footerStatus);
-            TextBlock version = Text("MV Media Downloader 3.0.1", 11.5, Theme.Muted);
+            TextBlock version = Text("MV Media Downloader 3.0.2", 11.5, Theme.Muted);
             version.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(version, 1);
             footer.Children.Add(version);
@@ -229,6 +229,41 @@ namespace MVMediaStudio
             SetNavSelected(downloadNavButton, download);
             SetNavSelected(conversionNavButton, !download);
             footerStatus.Text = download ? "Stahování připraveno" : "Konverze připravena";
+        }
+
+        private static void ConfigurePageScroll(ScrollViewer scroll)
+        {
+            int wheelRemainder = 0;
+            scroll.CanContentScroll = false;
+            scroll.PreviewMouseWheel += delegate(object sender, MouseWheelEventArgs eventArgs)
+            {
+                if (HasNestedScrollViewer(eventArgs.OriginalSource as DependencyObject, scroll))
+                    return;
+
+                int steps = ScrollWheelTuning.ConsumeSteps(ref wheelRemainder, eventArgs.Delta);
+                if (steps != 0)
+                    scroll.ScrollToVerticalOffset(scroll.VerticalOffset - steps * ScrollWheelTuning.PixelStep);
+                eventArgs.Handled = true;
+            };
+        }
+
+        private static bool HasNestedScrollViewer(DependencyObject source, ScrollViewer pageScroll)
+        {
+            DependencyObject current = source;
+            while (current != null && current != pageScroll)
+            {
+                if (current is ScrollViewer)
+                    return true;
+                try
+                {
+                    current = VisualTreeHelper.GetParent(current);
+                }
+                catch (InvalidOperationException)
+                {
+                    current = LogicalTreeHelper.GetParent(current);
+                }
+            }
+            return false;
         }
 
         private void SetNavSelected(Button button, bool selected)
