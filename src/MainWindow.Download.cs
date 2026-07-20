@@ -22,6 +22,8 @@ namespace MVMediaStudio
         private TextBlock downloadUrlCount;
         private ComboBox downloadFormatCombo;
         private ComboBox downloadQualityCombo;
+        private TextBox downloadRateValueBox;
+        private CheckBox downloadUnlimitedCheck;
         private TextBox downloadFolderBox;
         private CheckBox downloadPlaylistCheck;
         private CheckBox downloadSubtitlesCheck;
@@ -130,8 +132,9 @@ namespace MVMediaStudio
             StackPanel settingsPanel = new StackPanel();
             settingsPanel.Children.Add(Heading("Výsledek", 17));
             Grid choices = new Grid { Margin = new Thickness(0, 16, 0, 0) };
-            choices.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
-            choices.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            choices.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.65, GridUnitType.Star) });
+            choices.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.85, GridUnitType.Star) });
+            choices.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.15, GridUnitType.Star) });
             choices.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2.2, GridUnitType.Star) });
 
             downloadFormatCombo = Combo(
@@ -158,6 +161,38 @@ namespace MVMediaStudio
             Grid.SetColumn(quality, 1);
             choices.Children.Add(quality);
 
+            Grid rateGrid = new Grid();
+            rateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            rateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            downloadRateValueBox = new TextBox
+            {
+                Text = RateLimitKilobytes(settings.DownloadRateLimit),
+                MinHeight = 38,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                ToolTip = "3000 KB/s odpovídá přibližně 3 MiB/s"
+            };
+            downloadRateValueBox.PreviewTextInput += delegate(object sender, TextCompositionEventArgs eventArgs)
+            {
+                eventArgs.Handled = !Regex.IsMatch(eventArgs.Text, "^[0-9]+$");
+            };
+            rateGrid.Children.Add(downloadRateValueBox);
+            downloadUnlimitedCheck = new CheckBox
+            {
+                Content = "Bez omezení",
+                IsChecked = string.IsNullOrWhiteSpace(settings.DownloadRateLimit),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(9, 0, 0, 0)
+            };
+            downloadUnlimitedCheck.Checked += delegate { downloadRateValueBox.IsEnabled = false; };
+            downloadUnlimitedCheck.Unchecked += delegate { downloadRateValueBox.IsEnabled = true; };
+            downloadRateValueBox.IsEnabled = downloadUnlimitedCheck.IsChecked != true;
+            Grid.SetColumn(downloadUnlimitedCheck, 1);
+            rateGrid.Children.Add(downloadUnlimitedCheck);
+            Border rate = Labeled("Limit (KB/s)", rateGrid);
+            rate.Margin = new Thickness(12, 0, 0, 0);
+            Grid.SetColumn(rate, 2);
+            choices.Children.Add(rate);
+
             Grid folderGrid = new Grid();
             folderGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             folderGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -178,7 +213,7 @@ namespace MVMediaStudio
             folderGrid.Children.Add(open);
             Border folder = Labeled("Cílová složka", folderGrid);
             folder.Margin = new Thickness(12, 0, 0, 0);
-            Grid.SetColumn(folder, 2);
+            Grid.SetColumn(folder, 3);
             choices.Children.Add(folder);
             settingsPanel.Children.Add(choices);
 
@@ -281,6 +316,12 @@ namespace MVMediaStudio
                 SetDownloadStatus("Chybí platný odkaz", "Vlož adresu začínající http:// nebo https://.", Theme.Danger);
                 return;
             }
+            string selectedRateLimit;
+            if (!TryGetDownloadRateLimit(out selectedRateLimit))
+            {
+                SetDownloadStatus("Neplatný limit rychlosti", "Zadej kladné celé číslo v KB/s, například 3000.", Theme.Danger);
+                return;
+            }
             bool hasJojPlay = urls.Exists(delegate(string value)
             {
                 Uri uri;
@@ -322,11 +363,13 @@ namespace MVMediaStudio
             }
 
             CaptureDownloadSettings();
+            settings.DownloadRateLimit = selectedRateLimit;
             Directory.CreateDirectory(settings.DownloadDirectory);
             DownloadOptions options = new DownloadOptions
             {
                 Preset = settings.DownloadPreset,
                 Quality = settings.DownloadQuality,
+                RateLimit = settings.DownloadRateLimit,
                 OutputDirectory = settings.DownloadDirectory,
                 Playlist = downloadPlaylistCheck.IsChecked == true,
                 Subtitles = downloadSubtitlesCheck.IsChecked == true,
@@ -540,6 +583,9 @@ namespace MVMediaStudio
                 return;
             settings.DownloadPreset = ComboValue(downloadFormatCombo, "mp4-h264");
             settings.DownloadQuality = ComboValue(downloadQualityCombo, "1080");
+            string rateLimit;
+            if (TryGetDownloadRateLimit(out rateLimit))
+                settings.DownloadRateLimit = rateLimit;
             settings.DownloadDirectory = string.IsNullOrWhiteSpace(downloadFolderBox.Text) ? AppPaths.DefaultDownloadDirectory : downloadFolderBox.Text;
             settings.NoOverwrite = downloadNoOverwriteCheck.IsChecked == true;
             settings.Subtitles = downloadSubtitlesCheck.IsChecked == true;
@@ -570,6 +616,30 @@ namespace MVMediaStudio
             downloadCookiesCheck.IsChecked = true;
             SetDownloadStatus("JOJ Play je připraven", "Přihlášení se ověří při zahájení stahování.", Theme.Success);
             return true;
+        }
+
+        private bool TryGetDownloadRateLimit(out string rateLimit)
+        {
+            rateLimit = "";
+            if (downloadUnlimitedCheck == null || downloadUnlimitedCheck.IsChecked == true)
+                return true;
+            int kilobytes;
+            if (!int.TryParse((downloadRateValueBox.Text ?? "").Trim(), out kilobytes) || kilobytes < 1 || kilobytes > 1000000)
+                return false;
+            rateLimit = kilobytes + "K";
+            return true;
+        }
+
+        private static string RateLimitKilobytes(string rateLimit)
+        {
+            string value = (rateLimit ?? "").Trim().ToUpperInvariant();
+            Match match = Regex.Match(value, "^([0-9]+)([KM])$");
+            long amount;
+            if (!match.Success || !long.TryParse(match.Groups[1].Value, out amount))
+                return "3000";
+            if (match.Groups[2].Value == "M")
+                amount *= 1024;
+            return Math.Max(1, Math.Min(1000000, amount)).ToString();
         }
 
         private void ApplyDownloadAdvancedMode()

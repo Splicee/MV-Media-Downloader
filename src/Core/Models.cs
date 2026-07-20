@@ -8,6 +8,7 @@ namespace MVMediaStudio.Core
     {
         public string Preset;
         public string Quality;
+        public string RateLimit;
         public string OutputDirectory;
         public bool Playlist;
         public bool Subtitles;

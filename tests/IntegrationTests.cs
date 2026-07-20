@@ -39,7 +39,7 @@ namespace MVMediaStudio.Tests
             string projectRoot = Directory.GetParent(AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).FullName;
             runDirectory = Path.Combine(projectRoot, "artifacts", "real-tests", "run-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
             Directory.CreateDirectory(runDirectory);
-            Log("MV Media Downloader 3.0.2 – reálné integrační testy");
+            Log("MV Media Downloader 3.0.3 – reálné integrační testy");
             Log("Start: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
             Log("Výstup: " + runDirectory);
 

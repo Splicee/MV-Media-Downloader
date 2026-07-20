@@ -11,6 +11,7 @@ namespace MVMediaStudio.Core
         public string ConversionDirectory = AppPaths.DefaultDownloadDirectory;
         public string DownloadPreset = "mp4-h264";
         public string DownloadQuality = "1080";
+        public string DownloadRateLimit = "";
         public string ConversionFormat = "mp4";
         public string ConversionCodec = "h264";
         public string Theme = "dark";
@@ -39,6 +40,7 @@ namespace MVMediaStudio.Core
                 settings.ConversionDirectory = Get(values, "ConversionDirectory", settings.ConversionDirectory);
                 settings.DownloadPreset = Get(values, "DownloadPreset", settings.DownloadPreset);
                 settings.DownloadQuality = Get(values, "DownloadQuality", settings.DownloadQuality);
+                settings.DownloadRateLimit = Get(values, "DownloadRateLimit", settings.DownloadRateLimit, true);
                 settings.ConversionFormat = Get(values, "ConversionFormat", settings.ConversionFormat);
                 settings.ConversionCodec = Get(values, "ConversionCodec", settings.ConversionCodec);
                 settings.Theme = Get(values, "Theme", settings.Theme);
@@ -65,6 +67,7 @@ namespace MVMediaStudio.Core
                     "ConversionDirectory=" + ConversionDirectory,
                     "DownloadPreset=" + DownloadPreset,
                     "DownloadQuality=" + DownloadQuality,
+                    "DownloadRateLimit=" + DownloadRateLimit,
                     "ConversionFormat=" + ConversionFormat,
                     "ConversionCodec=" + ConversionCodec,
                     "Theme=" + Theme,
@@ -83,8 +86,15 @@ namespace MVMediaStudio.Core
 
         private static string Get(Dictionary<string, string> values, string key, string fallback)
         {
+            return Get(values, key, fallback, false);
+        }
+
+        private static string Get(Dictionary<string, string> values, string key, string fallback, bool allowEmpty)
+        {
             string value;
-            return values.TryGetValue(key, out value) && !string.IsNullOrWhiteSpace(value) ? value : fallback;
+            if (!values.TryGetValue(key, out value))
+                return fallback;
+            return allowEmpty || !string.IsNullOrWhiteSpace(value) ? value : fallback;
         }
 
         private static bool GetBool(Dictionary<string, string> values, string key, bool fallback)

@@ -124,7 +124,7 @@ namespace MVMediaStudio.Services
         {
             using (WebClient client = new WebClient())
             {
-                client.Headers.Add(HttpRequestHeader.UserAgent, "MV-Media-Downloader/3.0.2");
+                client.Headers.Add(HttpRequestHeader.UserAgent, "MV-Media-Downloader/3.0.3");
                 int lastPercentage = -1;
                 client.DownloadProgressChanged += delegate(object sender, DownloadProgressChangedEventArgs eventArgs)
                 {
@@ -141,7 +141,7 @@ namespace MVMediaStudio.Services
         {
             using (WebClient client = new WebClient())
             {
-                client.Headers.Add(HttpRequestHeader.UserAgent, "MV-Media-Downloader/3.0.2");
+                client.Headers.Add(HttpRequestHeader.UserAgent, "MV-Media-Downloader/3.0.3");
                 return await client.DownloadStringTaskAsync(new Uri(url));
             }
         }

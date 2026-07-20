@@ -97,6 +97,7 @@ namespace MVMediaStudio.Tests
             {
                 Preset = "mp4-h264",
                 Quality = "720",
+                RateLimit = "3000K",
                 OutputDirectory = Path.GetTempPath(),
                 CookiesFromBrowser = true,
                 CookieBrowserSpec = "chrome:C:\\JOJ\\Default"
@@ -107,6 +108,8 @@ namespace MVMediaStudio.Tests
             True(progressDeltaIndex >= 0 && args[progressDeltaIndex + 1] == "0.5", "průběh omezuje opakovaný výstup");
             int cookieIndex = args.IndexOf("--cookies-from-browser");
             True(cookieIndex >= 0 && args[cookieIndex + 1] == "chrome:C:\\JOJ\\Default", "JOJ používá oddělený Chrome profil");
+            int rateIndex = args.IndexOf("--limit-rate");
+            True(rateIndex >= 0 && args[rateIndex + 1] == "3000K", "vlastní omezení rychlosti se předá yt-dlp");
             int pluginIndex = args.IndexOf("--plugin-dirs");
             True(pluginIndex >= 0 && args[pluginIndex + 1] == pluginDirectory, "JOJ plugin se předá yt-dlp výslovně");
 
@@ -117,6 +120,12 @@ namespace MVMediaStudio.Tests
             args.Clear();
             DownloadArgumentBuilder.AddFormat(args, "mkv-best", "720", true);
             True(args.Contains("--remux-video") && args.Contains("mkv"), "MKV přebalí i přímý kombinovaný soubor");
+
+            cookieOptions.RateLimit = "neplatne";
+            bool rejectedRate = false;
+            try { DownloadArgumentBuilder.Build(cookieOptions, new[] { "https://example.com/video" }, new ToolState()); }
+            catch (ArgumentException) { rejectedRate = true; }
+            True(rejectedRate, "neplatné omezení rychlosti se odmítne");
             try { Directory.Delete(pluginDirectory, true); } catch { }
         }
 

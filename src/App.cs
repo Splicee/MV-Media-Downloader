@@ -8,8 +8,8 @@ using System.Windows;
 [assembly: AssemblyCompany("MV")]
 [assembly: AssemblyProduct("MV Media Downloader")]
 [assembly: AssemblyCopyright("Copyright © MV 2026")]
-[assembly: AssemblyVersion("3.0.2.0")]
-[assembly: AssemblyFileVersion("3.0.2.0")]
+[assembly: AssemblyVersion("3.0.3.0")]
+[assembly: AssemblyFileVersion("3.0.3.0")]
 
 namespace MVMediaStudio
 {

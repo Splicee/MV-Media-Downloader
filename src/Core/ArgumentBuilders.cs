@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace MVMediaStudio.Core
 {
@@ -75,6 +76,13 @@ namespace MVMediaStudio.Core
             args.Add("after_move:MV_DONE:%(filepath)s");
 
             AddFormat(args, options.Preset, options.Quality, tools != null && tools.HasFfmpeg);
+
+            string rateLimit = NormalizeRateLimit(options.RateLimit);
+            if (rateLimit.Length > 0)
+            {
+                args.Add("--limit-rate");
+                args.Add(rateLimit);
+            }
 
             if (!options.Playlist)
                 args.Add("--no-playlist");
@@ -184,6 +192,16 @@ namespace MVMediaStudio.Core
                 case "480": return "[height<=480]";
                 default: return "";
             }
+        }
+
+        private static string NormalizeRateLimit(string value)
+        {
+            string normalized = (value ?? "").Trim().ToUpperInvariant();
+            if (normalized.Length == 0)
+                return "";
+            if (!Regex.IsMatch(normalized, "^[1-9][0-9]*(?:\\.[0-9]+)?[KMG]$", RegexOptions.CultureInvariant))
+                throw new ArgumentException("Omezení rychlosti nemá platný formát.");
+            return normalized;
         }
 
         private static IEnumerable<string> Split(string text)
