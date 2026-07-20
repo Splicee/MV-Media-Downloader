@@ -18,6 +18,7 @@ namespace MVMediaStudio.Tests
             TestDownloadUrlParser();
             TestScrollWheel();
             TestDownloadPreset();
+            TestDiagnosticRedaction();
             TestJojResolver();
             TestConversion();
             TestUpdateMetadata();
@@ -104,6 +105,7 @@ namespace MVMediaStudio.Tests
             };
             args = DownloadArgumentBuilder.Build(cookieOptions, new[] { "https://play.joj.sk/player/test" }, new ToolState { PluginDirectory = pluginDirectory });
             True(args.Contains("after_move:MV_DONE:%(filepath)s"), "dokončené soubory mají samostatný stav");
+            True(args.Contains("--continue") && args.Contains("--part"), "rozpracovaný soubor lze bezpečně navázat");
             int progressDeltaIndex = args.IndexOf("--progress-delta");
             True(progressDeltaIndex >= 0 && args[progressDeltaIndex + 1] == "0.5", "průběh omezuje opakovaný výstup");
             int cookieIndex = args.IndexOf("--cookies-from-browser");
@@ -118,6 +120,10 @@ namespace MVMediaStudio.Tests
             True(args.Contains("ba/bestaudio/best"), "audio má fallback na kombinovaný stream");
 
             args.Clear();
+            DownloadArgumentBuilder.AddFormat(args, "audio-flac", "auto", true);
+            True(args.Contains("--audio-format") && args.Contains("flac"), "FLAC audio se předá yt-dlp");
+
+            args.Clear();
             DownloadArgumentBuilder.AddFormat(args, "mkv-best", "720", true);
             True(args.Contains("--remux-video") && args.Contains("mkv"), "MKV přebalí i přímý kombinovaný soubor");
 
@@ -127,6 +133,19 @@ namespace MVMediaStudio.Tests
             catch (ArgumentException) { rejectedRate = true; }
             True(rejectedRate, "neplatné omezení rychlosti se odmítne");
             try { Directory.Delete(pluginDirectory, true); } catch { }
+        }
+
+        private static void TestDiagnosticRedaction()
+        {
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            string input = home + "\\video.mkv https://example.com/watch?id=123&token=abc " +
+                "Authorization: Bearer tajne " + "AI" + "zaSyB02udgMkNLADkLJ_w5YNBMR2VR1WHfusI " +
+                "eyJabcdefghijk.abcdefghijklmnop.qwertyuiop";
+            string safe = DiagnosticRedactor.Redact(input);
+            True(safe.IndexOf(home, StringComparison.OrdinalIgnoreCase) < 0, "report skryje uživatelskou cestu");
+            True(safe.IndexOf("tajne", StringComparison.OrdinalIgnoreCase) < 0, "report skryje autorizační údaj");
+            True(safe.IndexOf("AIza", StringComparison.Ordinal) < 0, "report skryje API klíč");
+            True(safe.IndexOf("id=123", StringComparison.Ordinal) < 0, "report skryje parametry URL");
         }
 
         private static void TestConversion()
@@ -145,6 +164,7 @@ namespace MVMediaStudio.Tests
                     Codec = "h264",
                     RateControl = "crf",
                     Crf = "23",
+                    AudioCodec = "aac",
                     AudioBitrate = "192k"
                 };
                 string output;
@@ -162,6 +182,28 @@ namespace MVMediaStudio.Tests
                 options.VideoBitrate = "8000k";
                 args = ConversionArgumentBuilder.Build(options, out output);
                 True(args.Contains("-b:v") && args.Contains("8000k"), "pevný video bitrate");
+
+                options.Format = "mkv";
+                options.Codec = "h264";
+                options.AudioCodec = "flac";
+                args = ConversionArgumentBuilder.Build(options, out output);
+                True(args.Contains("flac") && !args.Contains("-b:a"), "FLAC nepoužívá ztrátový audio bitrate");
+
+                options.Codec = "h265";
+                options.AudioCodec = "mp3";
+                args = ConversionArgumentBuilder.Build(options, out output);
+                True(args.Contains("libx265") && args.Contains("libmp3lame"), "H.265 s MP3 používá běžné enkodéry");
+
+                options.Codec = "av1";
+                options.AudioCodec = "opus";
+                args = ConversionArgumentBuilder.Build(options, out output);
+                True(args.Contains("libaom-av1") && args.Contains("libopus"), "AV1 s Opus používá běžné enkodéry");
+
+                options.Format = "webm";
+                options.AudioCodec = "aac";
+                args = ConversionArgumentBuilder.Build(options, out output);
+                True(args.Contains("libopus") && !args.Contains("aac"), "WebM automaticky použije kompatibilní Opus");
+
             }
             finally
             {

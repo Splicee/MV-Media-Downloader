@@ -27,6 +27,7 @@ namespace MVMediaStudio.Core
         public string RateControl;
         public string Crf;
         public string VideoBitrate;
+        public string AudioCodec;
         public string AudioBitrate;
     }
 

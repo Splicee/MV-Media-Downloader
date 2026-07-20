@@ -14,6 +14,7 @@ namespace MVMediaStudio.Core
         public string DownloadRateLimit = "";
         public string ConversionFormat = "mp4";
         public string ConversionCodec = "h264";
+        public string ConversionAudioCodec = "aac";
         public string Theme = "dark";
         public bool AdvancedMode;
         public bool NoOverwrite = true;
@@ -43,6 +44,7 @@ namespace MVMediaStudio.Core
                 settings.DownloadRateLimit = Get(values, "DownloadRateLimit", settings.DownloadRateLimit, true);
                 settings.ConversionFormat = Get(values, "ConversionFormat", settings.ConversionFormat);
                 settings.ConversionCodec = Get(values, "ConversionCodec", settings.ConversionCodec);
+                settings.ConversionAudioCodec = Get(values, "ConversionAudioCodec", settings.ConversionAudioCodec);
                 settings.Theme = Get(values, "Theme", settings.Theme);
                 settings.AdvancedMode = GetBool(values, "AdvancedMode", settings.AdvancedMode);
                 settings.NoOverwrite = GetBool(values, "NoOverwrite", settings.NoOverwrite);
@@ -70,6 +72,7 @@ namespace MVMediaStudio.Core
                     "DownloadRateLimit=" + DownloadRateLimit,
                     "ConversionFormat=" + ConversionFormat,
                     "ConversionCodec=" + ConversionCodec,
+                    "ConversionAudioCodec=" + ConversionAudioCodec,
                     "Theme=" + Theme,
                     "AdvancedMode=" + AdvancedMode,
                     "NoOverwrite=" + NoOverwrite,

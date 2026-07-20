@@ -28,12 +28,14 @@ namespace MVMediaStudio
         private ComboBox conversionRateCombo;
         private ComboBox conversionCrfCombo;
         private ComboBox conversionVideoBitrateCombo;
+        private ComboBox conversionAudioCodecCombo;
         private ComboBox conversionAudioBitrateCombo;
         private TextBox conversionFolderBox;
         private Button conversionStartButton;
         private Button conversionCancelButton;
         private Button conversionRemoveButton;
         private Button conversionClearButton;
+        private Button conversionReportButton;
         private Button conversionLogToggle;
         private Border conversionLogCard;
         private TextBox conversionLogBox;
@@ -163,6 +165,7 @@ namespace MVMediaStudio
                 new ComboItem("h265", "H.265 / HEVC · menší soubor"),
                 new ComboItem("av1", "AV1 · moderní, pomalejší"));
             SelectCombo(conversionCodecCombo, settings.ConversionCodec);
+            conversionCodecCombo.SelectionChanged += delegate { EnsureCompatibleConversionChoice(); };
             Border codec = Labeled("Video kodek", conversionCodecCombo);
             codec.Margin = new Thickness(12, 0, 0, 0);
             Grid.SetColumn(codec, 1);
@@ -179,10 +182,8 @@ namespace MVMediaStudio
             browseFolder.Click += delegate { BrowseConversionFolder(); };
             Grid.SetColumn(browseFolder, 1);
             folderGrid.Children.Add(browseFolder);
-            Button openFolder = CreateActionButton("\uE8B7", "");
-            openFolder.Width = 42;
+            Button openFolder = CreateIconButton("\uE838", "Otevřít výstupní složku");
             openFolder.Margin = new Thickness(6, 0, 0, 0);
-            openFolder.ToolTip = "Otevřít výstupní složku";
             openFolder.Click += delegate { OpenDirectory(conversionFolderBox.Text); };
             Grid.SetColumn(openFolder, 2);
             folderGrid.Children.Add(openFolder);
@@ -218,6 +219,7 @@ namespace MVMediaStudio
             advancedChoices.ColumnDefinitions.Add(new ColumnDefinition());
             advancedChoices.ColumnDefinitions.Add(new ColumnDefinition());
             advancedChoices.ColumnDefinitions.Add(new ColumnDefinition());
+            advancedChoices.ColumnDefinitions.Add(new ColumnDefinition());
             conversionRateCombo = Combo(new ComboItem("crf", "CRF · stálá kvalita"), new ComboItem("bitrate", "Pevný bitrate"));
             conversionRateCombo.SelectedIndex = 0;
             conversionRateCombo.SelectionChanged += delegate { UpdateRateControlVisibility(); };
@@ -236,9 +238,20 @@ namespace MVMediaStudio
             advancedChoices.Children.Add(videoRate);
             conversionAudioBitrateCombo = Combo(new ComboItem("128k", "128 kb/s"), new ComboItem("192k", "192 kb/s"), new ComboItem("256k", "256 kb/s"), new ComboItem("320k", "320 kb/s"));
             SelectCombo(conversionAudioBitrateCombo, "192k");
+            conversionAudioCodecCombo = Combo(
+                new ComboItem("aac", "AAC · kompatibilní"),
+                new ComboItem("mp3", "MP3 · univerzální"),
+                new ComboItem("opus", "Opus · efektivní"),
+                new ComboItem("flac", "FLAC · bezztrátový"));
+            SelectCombo(conversionAudioCodecCombo, settings.ConversionAudioCodec);
+            conversionAudioCodecCombo.SelectionChanged += delegate { EnsureCompatibleConversionChoice(); UpdateRateControlVisibility(); };
+            Border audioCodec = Labeled("Zvuk kodek", conversionAudioCodecCombo);
+            audioCodec.Margin = new Thickness(10, 0, 0, 0);
+            Grid.SetColumn(audioCodec, 3);
+            advancedChoices.Children.Add(audioCodec);
             Border audioRate = Labeled("Zvuk bitrate", conversionAudioBitrateCombo);
             audioRate.Margin = new Thickness(10, 0, 0, 0);
-            Grid.SetColumn(audioRate, 3);
+            Grid.SetColumn(audioRate, 4);
             advancedChoices.Children.Add(audioRate);
             advancedPanel.Children.Add(advancedChoices);
             Border advancedCard = Card(advancedPanel);
@@ -252,6 +265,7 @@ namespace MVMediaStudio
             actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             actions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             conversionStartButton = CreatePrimaryButton("\uE768", "Spustit konverzi");
             conversionStartButton.MinWidth = 170;
             conversionStartButton.Click += async delegate { await StartConversionAsync(); };
@@ -261,9 +275,15 @@ namespace MVMediaStudio
             conversionCancelButton.Click += delegate { CancelActiveWork(); };
             Grid.SetColumn(conversionCancelButton, 1);
             actions.Children.Add(conversionCancelButton);
+            conversionReportButton = CreateActionButton("\uE8BD", "Nahlásit chybu");
+            conversionReportButton.Margin = new Thickness(0, 0, 8, 0);
+            conversionReportButton.Visibility = Visibility.Collapsed;
+            conversionReportButton.Click += delegate { ReportProblem("Konverze", conversionLog.ToString()); };
+            Grid.SetColumn(conversionReportButton, 3);
+            actions.Children.Add(conversionReportButton);
             conversionLogToggle = CreateActionButton("\uE756", "Zobrazit log");
             conversionLogToggle.Click += delegate { ToggleConversionLog(); };
-            Grid.SetColumn(conversionLogToggle, 3);
+            Grid.SetColumn(conversionLogToggle, 4);
             actions.Children.Add(conversionLogToggle);
             content.Children.Add(actions);
 
@@ -478,6 +498,7 @@ namespace MVMediaStudio
             activeOperation = "conversion";
             conversionLog.Clear();
             conversionLogBox.Clear();
+            conversionReportButton.Visibility = Visibility.Collapsed;
             conversionOverallProgress.Value = 0;
             SetBusy(true, "Probíhá konverze");
             SetConversionStatus("Konverze spuštěna", "Zpracovávám frontu souborů…", Theme.Primary);
@@ -557,6 +578,7 @@ namespace MVMediaStudio
                 SetConversionStatus("Dokončeno s chybami", errors + " souborů se nepodařilo převést. Podrobnosti jsou v logu.", Theme.Danger);
                 SetBusy(false, "Konverze dokončena s chybami");
                 ShowConversionLog();
+                conversionReportButton.Visibility = Visibility.Visible;
             }
             else
             {
@@ -597,6 +619,7 @@ namespace MVMediaStudio
                 RateControl = ComboValue(conversionRateCombo, "crf"),
                 Crf = ComboValue(conversionCrfCombo, "23"),
                 VideoBitrate = ComboValue(conversionVideoBitrateCombo, "6000k"),
+                AudioCodec = ComboValue(conversionAudioCodecCombo, "aac"),
                 AudioBitrate = ComboValue(conversionAudioBitrateCombo, "192k")
             };
         }
@@ -607,18 +630,28 @@ namespace MVMediaStudio
                 return;
             string format = ComboValue(conversionFormatCombo, "mp4");
             string codec = ComboValue(conversionCodecCombo, "h264");
+            string audioCodec = conversionAudioCodecCombo == null ? "aac" : ComboValue(conversionAudioCodecCombo, "aac");
             if (format == "webm" && codec != "av1")
                 SelectCombo(conversionCodecCombo, "av1");
             else if ((format == "avi" || format == "mov") && codec == "av1")
                 SelectCombo(conversionCodecCombo, "h264");
             else if (format == "avi" && codec == "h265")
                 SelectCombo(conversionCodecCombo, "h264");
+            if (conversionAudioCodecCombo == null)
+                return;
+            if (format == "webm" && audioCodec != "opus")
+                SelectCombo(conversionAudioCodecCombo, "opus");
+            else if (format == "avi" && audioCodec != "mp3")
+                SelectCombo(conversionAudioCodecCombo, "mp3");
+            else if ((format == "mp4" || format == "mov") && (audioCodec == "opus" || audioCodec == "flac"))
+                SelectCombo(conversionAudioCodecCombo, "aac");
         }
 
         private void ResetConversionChoices()
         {
             SelectCombo(conversionFormatCombo, "mp4");
             SelectCombo(conversionCodecCombo, "h264");
+            SelectCombo(conversionAudioCodecCombo, "aac");
             SelectCombo(conversionRateCombo, "crf");
             SelectCombo(conversionCrfCombo, "23");
             SelectCombo(conversionAudioBitrateCombo, "192k");
@@ -632,6 +665,8 @@ namespace MVMediaStudio
             bool bitrate = ComboValue(conversionRateCombo, "crf") == "bitrate";
             conversionCrfCombo.IsEnabled = !bitrate;
             conversionVideoBitrateCombo.IsEnabled = bitrate;
+            if (conversionAudioBitrateCombo != null)
+                conversionAudioBitrateCombo.IsEnabled = conversionAudioCodecCombo == null || ComboValue(conversionAudioCodecCombo, "aac") != "flac";
         }
 
         private void BrowseConversionFolder()
@@ -651,6 +686,7 @@ namespace MVMediaStudio
                 return;
             settings.ConversionFormat = ComboValue(conversionFormatCombo, "mp4");
             settings.ConversionCodec = ComboValue(conversionCodecCombo, "h264");
+            settings.ConversionAudioCodec = ComboValue(conversionAudioCodecCombo, "aac");
             settings.ConversionDirectory = string.IsNullOrWhiteSpace(conversionFolderBox.Text) ? AppPaths.DefaultDownloadDirectory : conversionFolderBox.Text;
         }
 

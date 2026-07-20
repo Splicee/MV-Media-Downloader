@@ -10,6 +10,7 @@ namespace MVMediaStudio.Core
         public static readonly string DataDirectory = SelectDataDirectory();
         public static readonly string BinDirectory = Path.Combine(DataDirectory, "bin");
         public static readonly string LogDirectory = Path.Combine(DataDirectory, "logs");
+        public static readonly string ReportDirectory = Path.Combine(DataDirectory, "reports");
         public static readonly string SettingsPath = Path.Combine(DataDirectory, "settings.ini");
         public static readonly string DownloadLogPath = Path.Combine(LogDirectory, "download.log");
         public static readonly string ConversionLogPath = Path.Combine(LogDirectory, "conversion.log");
@@ -28,6 +29,7 @@ namespace MVMediaStudio.Core
             Directory.CreateDirectory(DataDirectory);
             Directory.CreateDirectory(BinDirectory);
             Directory.CreateDirectory(LogDirectory);
+            Directory.CreateDirectory(ReportDirectory);
             Directory.CreateDirectory(UpdateDirectory);
             Directory.CreateDirectory(DefaultDownloadDirectory);
         }

@@ -139,7 +139,7 @@ namespace MVMediaStudio
             footerStatus = Text("Připraveno", 11.5, Theme.Muted);
             footerStatus.VerticalAlignment = VerticalAlignment.Center;
             footer.Children.Add(footerStatus);
-            TextBlock version = Text("MV Media Downloader 3.0.3", 11.5, Theme.Muted);
+            TextBlock version = Text("MV Media Downloader 3.0.4", 11.5, Theme.Muted);
             version.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(version, 1);
             footer.Children.Add(version);
@@ -339,6 +339,7 @@ namespace MVMediaStudio
 
         private void CancelActiveWork()
         {
+            downloadRateRestartRequested = false;
             if (activeCancellation != null && !activeCancellation.IsCancellationRequested)
                 activeCancellation.Cancel();
         }
@@ -403,6 +404,26 @@ namespace MVMediaStudio
         {
             Button button = new Button { Content = IconText(glyph, label), MinHeight = 40 };
             return button;
+        }
+
+        private Button CreateIconButton(string glyph, string tooltip)
+        {
+            return new Button
+            {
+                Content = new TextBlock
+                {
+                    Text = glyph,
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 16,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                },
+                Width = 42,
+                MinWidth = 42,
+                MinHeight = 40,
+                Padding = new Thickness(0),
+                ToolTip = tooltip
+            };
         }
 
         private StackPanel IconText(string glyph, string label)

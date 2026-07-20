@@ -94,7 +94,7 @@ namespace MVMediaStudio.Services
                 using (JojWebClient client = new JojWebClient())
                 {
                     client.Encoding = Encoding.UTF8;
-                    client.Headers[HttpRequestHeader.UserAgent] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 MVMediaDownloader/3.0.3";
+                    client.Headers[HttpRequestHeader.UserAgent] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 MVMediaDownloader/3.0.4";
                     client.Headers[HttpRequestHeader.Accept] = "text/html,application/xhtml+xml";
                     return client.DownloadString(url);
                 }

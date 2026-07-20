@@ -162,7 +162,7 @@ namespace MVMediaStudio.Services
         private static WebClient CreateClient()
         {
             WebClient client = new WebClient();
-            client.Headers[HttpRequestHeader.UserAgent] = "MV-Media-Downloader/3.0.3";
+            client.Headers[HttpRequestHeader.UserAgent] = "MV-Media-Downloader/3.0.4";
             client.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
             return client;
         }

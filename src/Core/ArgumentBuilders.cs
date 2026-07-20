@@ -64,6 +64,8 @@ namespace MVMediaStudio.Core
             args.Add("--progress");
             args.Add("--progress-delta");
             args.Add("0.5");
+            args.Add("--continue");
+            args.Add("--part");
             args.Add("--console-title");
             args.Add("--windows-filenames");
             args.Add("--trim-filenames");
@@ -143,6 +145,11 @@ namespace MVMediaStudio.Core
             if (mode == "audio-opus")
             {
                 args.AddRange(new[] { "-f", "ba[acodec^=opus]/ba/bestaudio/best", "-x", "--audio-format", "opus" });
+                return;
+            }
+            if (mode == "audio-flac")
+            {
+                args.AddRange(new[] { "-f", "ba/bestaudio/best", "-x", "--audio-format", "flac" });
                 return;
             }
             if (mode == "video-only")
@@ -263,13 +270,19 @@ namespace MVMediaStudio.Core
             else
                 args.AddRange(new[] { "-crf", NormalizeCrf(options.Crf) });
 
+            string audioCodec = NormalizeAudioCodec(options.AudioCodec);
             if (format == "webm")
-                args.AddRange(new[] { "-c:a", "libopus" });
-            else if (format == "avi")
+                audioCodec = "opus";
+            if (audioCodec == "mp3")
                 args.AddRange(new[] { "-c:a", "libmp3lame" });
+            else if (audioCodec == "opus")
+                args.AddRange(new[] { "-c:a", "libopus" });
+            else if (audioCodec == "flac")
+                args.AddRange(new[] { "-c:a", "flac" });
             else
                 args.AddRange(new[] { "-c:a", "aac" });
-            args.AddRange(new[] { "-b:a", NormalizeAudioBitrate(options.AudioBitrate) });
+            if (audioCodec != "flac")
+                args.AddRange(new[] { "-b:a", NormalizeAudioBitrate(options.AudioBitrate) });
             if (format == "mp4" || format == "mov")
                 args.AddRange(new[] { "-movflags", "+faststart" });
             args.AddRange(new[] { "-progress", "pipe:1", "-nostats", outputPath });
@@ -295,6 +308,17 @@ namespace MVMediaStudio.Core
                 case "h265": return "h265";
                 case "av1": return "av1";
                 default: return "h264";
+            }
+        }
+
+        private static string NormalizeAudioCodec(string value)
+        {
+            switch ((value ?? "").ToLowerInvariant())
+            {
+                case "mp3": return "mp3";
+                case "opus": return "opus";
+                case "flac": return "flac";
+                default: return "aac";
             }
         }
 
