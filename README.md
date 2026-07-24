@@ -1,6 +1,6 @@
 # MV Media Downloader
 
-Windows aplikace od MV pro stahování médií přes yt-dlp a dávkovou konverzi přes FFmpeg.
+Windows aplikace od MV pro stahování médií přes yt-dlp, Webshare a přímé HTTP odkazy a pro dávkovou konverzi přes FFmpeg.
 
 ## Funkce
 
@@ -14,6 +14,10 @@ Windows aplikace od MV pro stahování médií přes yt-dlp a dávkovou konverzi
 - FFprobe analýza kodeku, rozlišení a bitrate v pokročilém režimu;
 - samostatný průběh každého souboru a oddělené technické logy;
 - instalace a kontrola yt-dlp, FFmpeg a Deno přímo z aplikace;
+- Webshare přes oficiální API, volitelné přihlášení a relace chráněná účtem Windows;
+- vlastní HTTP downloader s navázáním `.part`, průběhem a živou změnou limitu rychlosti;
+- přímé soubory a oficiální dočasné CDN odkazy bez předávání tokenů do logu;
+- hlášení chyb přes GitHub nebo výchozí e-mailovou aplikaci;
 - automatické aktualizace přes ověřené GitHub Releases.
 
 ## Sestavení
@@ -61,6 +65,12 @@ Do pole lze vložit adresu epizody `https://www.joj.sk/...` i přímý odkaz `ht
 U přihlášeného obsahu použij tlačítko **Přihlásit JOJ Play**. Aplikace otevře oddělený profil Chrome pouze pro JOJ. Premium obsah bez oprávnění a DRM se nestahuje.
 
 Reálné integrační testy jsou dostupné přes `integration-test.cmd` a `joj-test.cmd`. Tyto testy používají internet a ukládají výsledky do `artifacts`.
+
+## Webshare a přímé odkazy
+
+Odkazy `webshare.cz/#/file/...` zpracovává aplikace přes oficiální Webshare API. Veřejné soubory fungují bez účtu, u souborů vyžadujících přihlášení použij **Přihlásit Webshare**. Heslo se neukládá a zapamatovaná relace je chráněná účtem Windows.
+
+Vlastní downloader umí běžné přímé HTTP/HTTPS odkazy, dočasné CDN odkazy, navázání přerušeného `.part` souboru a okamžitou změnu limitu rychlosti. Běžná stránka Přehraj.to se automaticky nezpracovává, protože služba neposkytuje povolené veřejné API. Použít lze oficiální přímý odkaz ke stažení nebo CDN odkaz získaný uživatelem z vlastního účtu.
 
 ## Podpis EXE
 

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Security.Cryptography;
 using MVMediaStudio.Core;
 using MVMediaStudio.Services;
 
@@ -39,7 +40,7 @@ namespace MVMediaStudio.Tests
             string projectRoot = Directory.GetParent(AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).FullName;
             runDirectory = Path.Combine(projectRoot, "artifacts", "real-tests", "run-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
             Directory.CreateDirectory(runDirectory);
-            Log("MV Media Downloader 3.0.4 – reálné integrační testy");
+            Log("MV Media Downloader 3.1.0 – reálné integrační testy");
             Log("Start: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
             Log("Výstup: " + runDirectory);
 
@@ -74,6 +75,8 @@ namespace MVMediaStudio.Tests
             foreach (DownloadCase test in downloads)
                 await RunDownloadAsync(test);
 
+            await RunDirectDownloadAsync();
+
             string fallbackVideo = downloads.Where(item => item.OutputPath != null && !item.OutputPath.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)).Select(item => item.OutputPath).FirstOrDefault();
             string mp4Input = File.Exists(downloads[0].OutputPath) ? downloads[0].OutputPath : fallbackVideo;
             string mkvInput = File.Exists(downloads[2].OutputPath) ? downloads[2].OutputPath : fallbackVideo;
@@ -92,7 +95,7 @@ namespace MVMediaStudio.Tests
                 await RunConversionAsync(test);
 
             Log("");
-            Log(failures == 0 ? "VÝSLEDEK: Všech 8 reálných testů prošlo." : "VÝSLEDEK: Selhání " + failures + ".");
+            Log(failures == 0 ? "VÝSLEDEK: Všech 10 reálných testů prošlo." : "VÝSLEDEK: Selhání " + failures + ".");
             Log("Konec: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
             SaveReport();
             Console.WriteLine("REPORT=" + Path.Combine(runDirectory, "integration-report.txt"));
@@ -148,6 +151,53 @@ namespace MVMediaStudio.Tests
                 Pass(media.Width > 0 && media.Height > 0 && media.DurationSeconds > 0, test.Name + " FFprobe", media.TechnicalSummary + ", " + media.DurationSeconds.ToString("0.0", CultureInfo.InvariantCulture) + " s");
             }
             Log("Čas: " + stopwatch.Elapsed.TotalSeconds.ToString("0.0") + " s");
+        }
+
+        private static async Task RunDirectDownloadAsync()
+        {
+            string outputDirectory = Path.Combine(runDirectory, "downloads", "D5-native-http");
+            Directory.CreateDirectory(outputDirectory);
+            DirectDownloadItem item = new DirectDownloadItem
+            {
+                Provider = "Přímý HTTP test",
+                SourceUrl = "https://media.w3.org/2010/05/video/movie_300.webm",
+                DownloadUrl = "https://media.w3.org/2010/05/video/movie_300.webm",
+                FileName = "native-direct.webm"
+            };
+            List<DirectDownloadProgress> events = new List<DirectDownloadProgress>();
+            Log("");
+            Log("START D5-native-http | přímý HTTP engine");
+            string path = await DirectDownloadService.DownloadAsync(
+                item,
+                outputDirectory,
+                true,
+                delegate { return 0; },
+                delegate(DirectDownloadProgress value) { lock (events) events.Add(value); },
+                CancellationToken.None);
+            byte[] original = File.ReadAllBytes(path);
+            string originalHash = Sha256(original);
+            Pass(original.Length > 1024 && events.Any(value => value.Completed), "D5-native-http stažení", "soubor=" + path);
+
+            string partPath = path + ".part";
+            File.WriteAllBytes(partPath, original.Take(original.Length / 2).ToArray());
+            File.Delete(path);
+            events.Clear();
+            string resumedPath = await DirectDownloadService.DownloadAsync(
+                item,
+                outputDirectory,
+                true,
+                delegate { return 0; },
+                delegate(DirectDownloadProgress value) { lock (events) events.Add(value); },
+                CancellationToken.None);
+            byte[] resumed = File.ReadAllBytes(resumedPath);
+            bool resumeDetected = events.Any(value => value.Resumed);
+            Pass(resumeDetected && resumed.Length == original.Length && Sha256(resumed) == originalHash, "D6-native-http navázání .part", "resume=" + resumeDetected + ", velikost=" + resumed.Length);
+        }
+
+        private static string Sha256(byte[] value)
+        {
+            using (SHA256 sha = SHA256.Create())
+                return BitConverter.ToString(sha.ComputeHash(value)).Replace("-", "").ToLowerInvariant();
         }
 
         private static async Task RunConversionAsync(ConversionCase test)

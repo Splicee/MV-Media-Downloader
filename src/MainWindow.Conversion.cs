@@ -275,10 +275,10 @@ namespace MVMediaStudio
             conversionCancelButton.Click += delegate { CancelActiveWork(); };
             Grid.SetColumn(conversionCancelButton, 1);
             actions.Children.Add(conversionCancelButton);
-            conversionReportButton = CreateActionButton("\uE8BD", "Nahlásit chybu");
+            conversionReportButton = CreateActionButton("\uE8BD", "Nahlásit chybu ▾");
             conversionReportButton.Margin = new Thickness(0, 0, 8, 0);
             conversionReportButton.Visibility = Visibility.Collapsed;
-            conversionReportButton.Click += delegate { ReportProblem("Konverze", conversionLog.ToString()); };
+            conversionReportButton.Click += delegate { ShowReportOptions(conversionReportButton, "Konverze", conversionLog.ToString()); };
             Grid.SetColumn(conversionReportButton, 3);
             actions.Children.Add(conversionReportButton);
             conversionLogToggle = CreateActionButton("\uE756", "Zobrazit log");

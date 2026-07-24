@@ -10,7 +10,7 @@ set "SOURCES="
 for /R "%ROOT%src\Core" %%F in (*.cs) do set "SOURCES=!SOURCES! "%%F""
 for /R "%ROOT%src\Services" %%F in (*.cs) do if /I not "%%~nxF"=="UpdateService.cs" set "SOURCES=!SOURCES! "%%F""
 
-"%CSC%" /nologo /target:exe /platform:anycpu /optimize+ /nowarn:0649 /codepage:65001 /out:"%TEST_EXE%" /reference:System.dll /reference:System.Core.dll /reference:System.Web.Extensions.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll !SOURCES! "%ROOT%tests\JojIntegrationTests.cs"
+"%CSC%" /nologo /target:exe /platform:anycpu /optimize+ /nowarn:0649 /codepage:65001 /out:"%TEST_EXE%" /reference:System.dll /reference:System.Core.dll /reference:System.Security.dll /reference:System.Web.Extensions.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll !SOURCES! "%ROOT%tests\JojIntegrationTests.cs"
 if errorlevel 1 exit /b 1
 
 "%TEST_EXE%"

@@ -12,6 +12,7 @@ namespace MVMediaStudio.Core
         public string DownloadPreset = "mp4-h264";
         public string DownloadQuality = "1080";
         public string DownloadRateLimit = "";
+        public string WebshareUserName = "";
         public string ConversionFormat = "mp4";
         public string ConversionCodec = "h264";
         public string ConversionAudioCodec = "aac";
@@ -42,6 +43,7 @@ namespace MVMediaStudio.Core
                 settings.DownloadPreset = Get(values, "DownloadPreset", settings.DownloadPreset);
                 settings.DownloadQuality = Get(values, "DownloadQuality", settings.DownloadQuality);
                 settings.DownloadRateLimit = Get(values, "DownloadRateLimit", settings.DownloadRateLimit, true);
+                settings.WebshareUserName = Get(values, "WebshareUserName", settings.WebshareUserName, true);
                 settings.ConversionFormat = Get(values, "ConversionFormat", settings.ConversionFormat);
                 settings.ConversionCodec = Get(values, "ConversionCodec", settings.ConversionCodec);
                 settings.ConversionAudioCodec = Get(values, "ConversionAudioCodec", settings.ConversionAudioCodec);
@@ -70,6 +72,7 @@ namespace MVMediaStudio.Core
                     "DownloadPreset=" + DownloadPreset,
                     "DownloadQuality=" + DownloadQuality,
                     "DownloadRateLimit=" + DownloadRateLimit,
+                    "WebshareUserName=" + WebshareUserName,
                     "ConversionFormat=" + ConversionFormat,
                     "ConversionCodec=" + ConversionCodec,
                     "ConversionAudioCodec=" + ConversionAudioCodec,

@@ -14,7 +14,7 @@ namespace MVMediaStudio.Core
             text = Regex.Replace(text, @"AIza[0-9A-Za-z_-]{20,}", "<odstraneny-klic>");
             text = Regex.Replace(text, @"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}(?:\.[A-Za-z0-9_-]{5,})?", "<odstraneny-token>");
             text = Regex.Replace(text, @"(?im)(authorization\s*:\s*bearer\s+)(\S+)", "$1<odstraneno>");
-            text = Regex.Replace(text, @"(?im)((?:authorization|cookie|set-cookie|tivio-custom-token|refresh_token|access_token|api[_-]?key)\s*[:=]\s*)([^\s;]+)", "$1<odstraneno>");
+            text = Regex.Replace(text, @"(?im)((?:authorization|cookie|set-cookie|tivio-custom-token|refresh_token|access_token|api[_-]?key|wst)\s*[:=]\s*)([^\s;]+)", "$1<odstraneno>");
             text = Regex.Replace(text, @"([?&][A-Za-z0-9_.~-]+)=([^&\s]+)", "$1=<odstraneno>");
             return text;
         }

@@ -48,6 +48,15 @@ namespace MVMediaStudio.Services
             return IssueBaseUrl + "?title=" + Uri.EscapeDataString(title) + "&body=" + Uri.EscapeDataString(body);
         }
 
+        public static string BuildEmailUrl(string area, string report)
+        {
+            string subject = "MV Media Downloader - chyba - " + area;
+            string body = "Dobry den,\r\n\r\nposilam ocisteny diagnosticky souhrn aplikace.\r\n\r\n" +
+                Tail(report, 1400) +
+                "\r\n\r\nKompletni report je zkopirovany ve schrance a lze jej vlozit do zpravy.";
+            return "mailto:?subject=" + Uri.EscapeDataString(subject) + "&body=" + Uri.EscapeDataString(body);
+        }
+
         private static string Value(string value)
         {
             return string.IsNullOrWhiteSpace(value) ? "nezjisteno" : value.Trim();

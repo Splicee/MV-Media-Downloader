@@ -37,6 +37,7 @@ namespace MVMediaStudio
         private Button downloadApplyRateButton;
         private Button downloadReportButton;
         private Button downloadLogToggle;
+        private Button webshareLoginButton;
         private Border downloadLogCard;
         private TextBox downloadLogBox;
         private ProgressBar downloadProgress;
@@ -50,6 +51,7 @@ namespace MVMediaStudio
         private bool downloadCanApplyRate;
         private bool downloadRateApplyPending;
         private string appliedDownloadRateLimit = "";
+        private string activeDownloadEngine = "";
 
         private Grid BuildDownloadPage()
         {
@@ -114,7 +116,7 @@ namespace MVMediaStudio
                     downloadUrlBox.Text = Convert.ToString(eventArgs.Data.GetData(DataFormats.Text));
             };
             inputHost.Children.Add(downloadUrlBox);
-            downloadPlaceholder = Text("https://www.youtube.com/watch?v=…  nebo  https://www.joj.sk/relacia/…/epizoda/…", 13, Theme.Muted);
+            downloadPlaceholder = Text("YouTube, JOJ Play, Webshare nebo přímý odkaz na soubor…", 13, Theme.Muted);
             downloadPlaceholder.Margin = new Thickness(14, 13, 0, 0);
             downloadPlaceholder.VerticalAlignment = VerticalAlignment.Top;
             downloadPlaceholder.IsHitTestVisible = false;
@@ -289,13 +291,20 @@ namespace MVMediaStudio
             checks.Children.Add(downloadCookiesCheck);
             checks.Children.Add(downloadNoOverwriteCheck);
             optionRow.Children.Add(checks);
+            StackPanel providerActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            webshareLoginButton = CreateActionButton("\uE77B", WebshareService.HasSession ? "Webshare ✓" : "Přihlásit Webshare");
+            webshareLoginButton.VerticalAlignment = VerticalAlignment.Center;
+            webshareLoginButton.ToolTip = "Přihlášení přes oficiální Webshare API";
+            webshareLoginButton.Click += async delegate { await OpenWebshareLoginAsync(); };
+            providerActions.Children.Add(webshareLoginButton);
             Button jojLogin = CreateActionButton("\uE77B", "Přihlásit JOJ Play");
             jojLogin.Margin = new Thickness(12, 0, 0, 0);
             jojLogin.VerticalAlignment = VerticalAlignment.Center;
             jojLogin.ToolTip = "Otevře oddělený Chrome profil používaný pouze pro JOJ Play";
             jojLogin.Click += delegate { OpenJojPlayLogin(); };
-            Grid.SetColumn(jojLogin, 1);
-            optionRow.Children.Add(jojLogin);
+            providerActions.Children.Add(jojLogin);
+            Grid.SetColumn(providerActions, 1);
+            optionRow.Children.Add(providerActions);
             settingsPanel.Children.Add(optionRow);
             Border settingsCard = Card(settingsPanel);
             settingsCard.Margin = new Thickness(0, 14, 0, 0);
@@ -328,10 +337,10 @@ namespace MVMediaStudio
             downloadCancelButton.Click += delegate { CancelActiveWork(); };
             Grid.SetColumn(downloadCancelButton, 1);
             actions.Children.Add(downloadCancelButton);
-            downloadReportButton = CreateActionButton("\uE8BD", "Nahlásit chybu");
+            downloadReportButton = CreateActionButton("\uE8BD", "Nahlásit chybu ▾");
             downloadReportButton.Margin = new Thickness(0, 0, 8, 0);
             downloadReportButton.Visibility = Visibility.Collapsed;
-            downloadReportButton.Click += delegate { ReportProblem("Stahování", downloadLog.ToString()); };
+            downloadReportButton.Click += delegate { ShowReportOptions(downloadReportButton, "Stahování", downloadLog.ToString()); };
             Grid.SetColumn(downloadReportButton, 3);
             actions.Children.Add(downloadReportButton);
             downloadLogToggle = CreateActionButton("\uE756", "Zobrazit log");
@@ -382,8 +391,8 @@ namespace MVMediaStudio
         {
             if (busy)
                 return;
-            List<string> urls = ValidDownloadUrls();
-            if (urls.Count == 0)
+            List<string> inputUrls = ValidDownloadUrls();
+            if (inputUrls.Count == 0)
             {
                 SetDownloadStatus("Chybí platný odkaz", "Vlož adresu začínající http:// nebo https://.", Theme.Danger);
                 return;
@@ -394,7 +403,21 @@ namespace MVMediaStudio
                 SetDownloadStatus("Neplatný limit rychlosti", "Zadej kladné celé číslo v KB/s, například 3000.", Theme.Danger);
                 return;
             }
-            bool hasJojPlay = urls.Exists(delegate(string value)
+            List<string> ytDlpUrls = new List<string>();
+            List<DownloadRoute> directRoutes = new List<DownloadRoute>();
+            List<DownloadRoute> unsupportedRoutes = new List<DownloadRoute>();
+            foreach (string url in inputUrls)
+            {
+                DownloadRoute route = DownloadSourceRouter.Classify(url);
+                if (route.Kind == DownloadProviderKind.YtDlp)
+                    ytDlpUrls.Add(url);
+                else if (route.Kind == DownloadProviderKind.Unsupported)
+                    unsupportedRoutes.Add(route);
+                else
+                    directRoutes.Add(route);
+            }
+
+            bool hasJojPlay = ytDlpUrls.Exists(delegate(string value)
             {
                 Uri uri;
                 return Uri.TryCreate(value, UriKind.Absolute, out uri) &&
@@ -404,7 +427,7 @@ namespace MVMediaStudio
                 return;
             if (hasJojPlay)
                 downloadCookiesCheck.IsChecked = true;
-            if (!await EnsureYtDlpAsync())
+            if (ytDlpUrls.Count > 0 && !await EnsureYtDlpAsync())
                 return;
 
             downloadLog.Clear();
@@ -421,22 +444,24 @@ namespace MVMediaStudio
             SetBusy(true, "Kontroluji odkazy");
             SetDownloadStatus("Kontroluji odkazy", "Ověřuji zdroj a dostupnost veřejného videa…", Theme.Primary);
 
-            DownloadUrlResolution resolution;
-            try
+            if (ytDlpUrls.Count > 0)
             {
-                resolution = await JojUrlResolver.ResolveAsync(urls);
-                urls = resolution.Urls;
-                foreach (string note in resolution.Notes)
-                    AppendDownloadLog(note);
-            }
-            catch (Exception error)
-            {
-                AppPaths.WriteError(error);
-                AppendDownloadLog(error.Message);
-                SetBusy(false, "Odkaz není dostupný");
-                SetDownloadStatus("Odkaz JOJ nelze stáhnout", error.Message, Theme.Danger);
-                ShowDownloadLog();
-                return;
+                try
+                {
+                    DownloadUrlResolution resolution = await JojUrlResolver.ResolveAsync(ytDlpUrls);
+                    ytDlpUrls = resolution.Urls;
+                    foreach (string note in resolution.Notes)
+                        AppendDownloadLog(note);
+                }
+                catch (Exception error)
+                {
+                    AppPaths.WriteError(error);
+                    AppendDownloadLog(error.Message);
+                    SetBusy(false, "Odkaz není dostupný");
+                    SetDownloadStatus("Odkaz JOJ nelze stáhnout", error.Message, Theme.Danger);
+                    ShowDownloadLog();
+                    return;
+                }
             }
 
             CaptureDownloadSettings();
@@ -458,8 +483,114 @@ namespace MVMediaStudio
 
             activeOperation = "download";
             SetBusy(true, "Probíhá stahování");
-            SetDownloadStatus("Připravuji stahování", urls.Count == 1 ? "Zpracovávám odkaz…" : "Zpracovávám " + urls.Count + " odkazů…", Theme.Primary);
+            SetDownloadStatus("Připravuji stahování", inputUrls.Count == 1 ? "Zpracovávám odkaz…" : "Zpracovávám " + inputUrls.Count + " odkazů…", Theme.Primary);
 
+            int exitCode = unsupportedRoutes.Count > 0 ? 1 : 0;
+            foreach (DownloadRoute route in unsupportedRoutes)
+            {
+                AppendDownloadLog("! [" + route.Provider + "] " + route.Message);
+            }
+
+            if (directRoutes.Count > 0)
+            {
+                activeDownloadEngine = "direct";
+                activeCancellation = new CancellationTokenSource();
+                downloadCanApplyRate = true;
+                foreach (DownloadRoute route in directRoutes)
+                {
+                    if (activeCancellation.IsCancellationRequested)
+                    {
+                        exitCode = -2;
+                        break;
+                    }
+
+                    DirectDownloadItem item;
+                    try
+                    {
+                        if (route.Kind == DownloadProviderKind.Webshare)
+                            item = await WebshareService.ResolveAsync(route.Url);
+                        else
+                            item = new DirectDownloadItem
+                            {
+                                Provider = route.Provider,
+                                SourceUrl = route.Url,
+                                DownloadUrl = route.Url,
+                                FileName = DownloadSourceRouter.FileNameFromUrl(route.Url)
+                            };
+                        AppendDownloadLog("[" + item.Provider + "] " + item.FileName);
+                        await DirectDownloadService.DownloadAsync(
+                            item,
+                            settings.DownloadDirectory,
+                            options.NoOverwrite,
+                            CurrentDirectRateLimitBytes,
+                            HandleDirectDownloadProgress,
+                            activeCancellation.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        exitCode = -2;
+                        break;
+                    }
+                    catch (Exception error)
+                    {
+                        exitCode = 1;
+                        AppPaths.WriteError(error);
+                        AppendDownloadLog("! [" + route.Provider + "] " + error.Message);
+                    }
+                }
+                activeCancellation = null;
+                downloadCanApplyRate = false;
+            }
+
+            if (exitCode != -2 && ytDlpUrls.Count > 0)
+            {
+                activeDownloadEngine = "ytdlp";
+                int ytDlpExit = await RunYtDlpDownloadAsync(options, ytDlpUrls);
+                if (ytDlpExit == -2)
+                    exitCode = -2;
+                else if (ytDlpExit != 0)
+                    exitCode = ytDlpExit;
+            }
+
+            CommitDownloadLiveLog();
+            activeCancellation = null;
+            activeOperation = "";
+            activeDownloadEngine = "";
+            downloadCanApplyRate = false;
+            downloadRateRestartRequested = false;
+
+            if (exitCode == 0)
+            {
+                downloadProgress.Value = 100;
+                downloadProgressPercent.Text = "100 %";
+                SetDownloadStatus("Stažení dokončeno", "Soubory jsou připravené v cílové složce.", Theme.Success);
+                SetBusy(false, "Stahování dokončeno");
+            }
+            else if (exitCode == -2)
+            {
+                SetDownloadStatus("Stahování zrušeno", "Rozpracovaná operace byla zastavena.", Theme.Warning);
+                SetBusy(false, "Stahování zrušeno");
+            }
+            else
+            {
+                if (downloadCompletedItems > 0)
+                {
+                    SetDownloadStatus("Dokončeno s upozorněním", downloadCompletedItems + " z " + inputUrls.Count + " souborů je připraveno. Podrobnosti jsou v logu.", Theme.Warning);
+                    SetBusy(false, "Část souborů byla stažena");
+                }
+                else
+                {
+                    SetDownloadStatus("Stažení se nepovedlo", "Podrobnosti jsou v technickém logu.", Theme.Danger);
+                    SetBusy(false, "Chyba při stahování");
+                }
+                ShowDownloadLog();
+                downloadReportButton.Visibility = Visibility.Visible;
+            }
+            SaveLog(AppPaths.DownloadLogPath, downloadLog.ToString());
+        }
+
+        private async Task<int> RunYtDlpDownloadAsync(DownloadOptions options, List<string> urls)
+        {
             int exitCode = -1;
             bool firstRun = true;
             while (true)
@@ -505,41 +636,75 @@ namespace MVMediaStudio
                 }
                 break;
             }
+            return exitCode;
+        }
 
-            CommitDownloadLiveLog();
-            activeCancellation = null;
-            activeOperation = "";
-            downloadCanApplyRate = false;
-            downloadRateRestartRequested = false;
+        private void HandleDirectDownloadProgress(DirectDownloadProgress progress)
+        {
+            Dispatcher.BeginInvoke(new Action(delegate
+            {
+                if (progress.Completed)
+                {
+                    if (downloadCompletedPaths.Add(progress.OutputPath))
+                        downloadCompletedItems++;
+                    downloadProgress.Value = 100;
+                    downloadProgressPercent.Text = "100 %";
+                    AppendDownloadLog(progress.Skipped ? "[Přeskočeno] " + progress.OutputPath : "[Hotovo] " + progress.OutputPath);
+                    SetDownloadStatus(progress.Skipped ? "Soubor už existuje" : "Soubor dokončen", progress.Provider + " · " + progress.FileName, Theme.Success);
+                    return;
+                }
 
-            if (exitCode == 0)
-            {
-                downloadProgress.Value = 100;
-                downloadProgressPercent.Text = "100 %";
-                SetDownloadStatus("Stažení dokončeno", "Soubory jsou připravené v cílové složce.", Theme.Success);
-                SetBusy(false, "Stahování dokončeno");
-            }
-            else if (exitCode == -2)
-            {
-                SetDownloadStatus("Stahování zrušeno", "Rozpracovaná operace byla zastavena.", Theme.Warning);
-                SetBusy(false, "Stahování zrušeno");
-            }
-            else
-            {
-                if (downloadCompletedItems > 0)
+                downloadCanApplyRate = true;
+                double percentage = progress.Percentage;
+                downloadProgress.Value = percentage;
+                downloadProgressPercent.Text = progress.TotalBytes > 0 ? percentage.ToString("0.#") + " %" : "…";
+                string detail = progress.Provider + " · " + FormatTransferSpeed(progress.BytesPerSecond);
+                if (progress.TotalBytes > 0 && progress.BytesPerSecond > 0)
                 {
-                    SetDownloadStatus("Dokončeno s upozorněním", downloadCompletedItems + " z " + urls.Count + " souborů je připraveno. Podrobnosti jsou v logu.", Theme.Warning);
-                    SetBusy(false, "Část souborů byla stažena");
+                    double remaining = (progress.TotalBytes - progress.BytesReceived) / progress.BytesPerSecond;
+                    detail += " · zbývá " + FormatDuration(remaining);
                 }
-                else
-                {
-                    SetDownloadStatus("Stažení se nepovedlo", "Podrobnosti jsou v technickém logu.", Theme.Danger);
-                    SetBusy(false, "Chyba při stahování");
-                }
-                ShowDownloadLog();
-                downloadReportButton.Visibility = Visibility.Visible;
-            }
-            SaveLog(AppPaths.DownloadLogPath, downloadLog.ToString());
+                SetDownloadStatus("Stahování", detail, Theme.Primary);
+                SetDownloadLiveLog("[" + progress.Provider + "] " +
+                    (progress.TotalBytes > 0 ? percentage.ToString("0.#") + "% " : "") +
+                    FormatByteSize(progress.BytesReceived) + " · " + FormatTransferSpeed(progress.BytesPerSecond));
+            }));
+        }
+
+        private long CurrentDirectRateLimitBytes()
+        {
+            string value = settings.DownloadRateLimit;
+            if (string.IsNullOrWhiteSpace(value))
+                return 0;
+            long amount;
+            string normalized = value.Trim().ToUpperInvariant();
+            if (normalized.EndsWith("K") && long.TryParse(normalized.TrimEnd('K'), out amount))
+                return amount * 1024;
+            if (normalized.EndsWith("M") && long.TryParse(normalized.TrimEnd('M'), out amount))
+                return amount * 1024 * 1024;
+            return 0;
+        }
+
+        private static string FormatTransferSpeed(double bytesPerSecond)
+        {
+            return bytesPerSecond <= 0 ? "zjišťuji rychlost" : FormatByteSize((long)bytesPerSecond) + "/s";
+        }
+
+        private static string FormatByteSize(long bytes)
+        {
+            if (bytes >= 1024L * 1024 * 1024)
+                return (bytes / (1024d * 1024 * 1024)).ToString("0.00") + " GiB";
+            if (bytes >= 1024L * 1024)
+                return (bytes / (1024d * 1024)).ToString("0.0") + " MiB";
+            return (bytes / 1024d).ToString("0") + " KiB";
+        }
+
+        private static string FormatDuration(double seconds)
+        {
+            if (seconds < 0 || double.IsInfinity(seconds) || double.IsNaN(seconds))
+                return "—";
+            TimeSpan value = TimeSpan.FromSeconds(Math.Min(seconds, 359999));
+            return value.TotalHours >= 1 ? value.ToString(@"h\:mm\:ss") : value.ToString(@"m\:ss");
         }
 
         private void HandleDownloadLine(string line, bool isError)
@@ -734,6 +899,54 @@ namespace MVMediaStudio
             return true;
         }
 
+        private async Task OpenWebshareLoginAsync()
+        {
+            if (WebshareService.HasSession)
+            {
+                MessageBoxResult logout = MessageBox.Show(
+                    this,
+                    "Webshare relace je aktivní. Chceš ji z tohoto počítače odstranit?",
+                    "Webshare",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question,
+                    MessageBoxResult.No);
+                if (logout == MessageBoxResult.Yes)
+                {
+                    WebshareService.Logout();
+                    webshareLoginButton.Content = IconText("\uE77B", "Přihlásit Webshare");
+                    SetDownloadStatus("Webshare odhlášeno", "Uložená relace byla odstraněna.", Theme.Success);
+                }
+                return;
+            }
+
+            WebshareLoginDialog dialog = new WebshareLoginDialog(this, settings.WebshareUserName);
+            if (dialog.ShowDialog() != true)
+                return;
+
+            string userName = dialog.UserName;
+            string password = dialog.Password;
+            webshareLoginButton.IsEnabled = false;
+            SetDownloadStatus("Přihlašuji Webshare", "Ověřuji účet přes oficiální API…", Theme.Primary);
+            try
+            {
+                WebshareLoginResult result = await WebshareService.LoginAsync(userName, password, dialog.Remember);
+                settings.WebshareUserName = result.UserName;
+                settings.Save();
+                webshareLoginButton.Content = IconText("\uE77B", "Webshare ✓");
+                SetDownloadStatus("Webshare je připravené", "Relace účtu byla úspěšně ověřena.", Theme.Success);
+            }
+            catch (Exception error)
+            {
+                AppPaths.WriteError(error);
+                SetDownloadStatus("Přihlášení Webshare selhalo", error.Message, Theme.Danger);
+            }
+            finally
+            {
+                password = null;
+                webshareLoginButton.IsEnabled = true;
+            }
+        }
+
         private bool TryGetDownloadRateLimit(out string rateLimit)
         {
             rateLimit = "";
@@ -767,6 +980,16 @@ namespace MVMediaStudio
 
             if (activeOperation != "download" || activeCancellation == null)
                 return;
+            if (activeDownloadEngine == "direct")
+            {
+                settings.DownloadRateLimit = rateLimit;
+                settings.Save();
+                appliedDownloadRateLimit = rateLimit;
+                downloadRateApplyPending = false;
+                SetDownloadStatus("Limit rychlosti změněn", DownloadRateLabel(rateLimit) + " · aktivní bez přerušení přenosu.", Theme.Success);
+                UpdateDownloadButtons();
+                return;
+            }
             if (!downloadCanApplyRate)
             {
                 settings.DownloadRateLimit = rateLimit;

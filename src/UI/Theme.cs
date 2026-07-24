@@ -54,6 +54,12 @@ namespace MVMediaStudio.UI
             element.SetResourceReference(property, key);
         }
 
+        public static void StyleMenu(ContextMenu menu, Window window)
+        {
+            menu.Style = CreateContextMenuStyle(window);
+            menu.Resources[typeof(MenuItem)] = CreateMenuItemStyle(window);
+        }
+
         private static Style CreateButtonStyle(Window window)
         {
             Style style = new Style(typeof(Button));
@@ -231,6 +237,64 @@ namespace MVMediaStudio.UI
             style.Setters.Add(new Setter(Control.BackgroundProperty, window.FindResource(SurfaceAlt)));
             style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
             style.Setters.Add(new Setter(FrameworkElement.HeightProperty, 7d));
+            return style;
+        }
+
+        private static Style CreateContextMenuStyle(Window window)
+        {
+            Style style = new Style(typeof(ContextMenu));
+            style.Setters.Add(new Setter(Control.ForegroundProperty, window.FindResource(Text)));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, window.FindResource(SurfaceAlt)));
+            style.Setters.Add(new Setter(Control.BorderBrushProperty, window.FindResource(Border)));
+            style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1)));
+            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(5)));
+            style.Setters.Add(new Setter(Control.FontFamilyProperty, new FontFamily("Segoe UI")));
+
+            ControlTemplate template = new ControlTemplate(typeof(ContextMenu));
+            FrameworkElementFactory border = new FrameworkElementFactory(typeof(Border));
+            border.SetBinding(System.Windows.Controls.Border.BackgroundProperty, new Binding("Background") { RelativeSource = TemplatedParent() });
+            border.SetBinding(System.Windows.Controls.Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = TemplatedParent() });
+            border.SetBinding(System.Windows.Controls.Border.BorderThicknessProperty, new Binding("BorderThickness") { RelativeSource = TemplatedParent() });
+            border.SetBinding(System.Windows.Controls.Border.PaddingProperty, new Binding("Padding") { RelativeSource = TemplatedParent() });
+            border.SetValue(System.Windows.Controls.Border.CornerRadiusProperty, new CornerRadius(6));
+            FrameworkElementFactory items = new FrameworkElementFactory(typeof(StackPanel));
+            items.SetValue(Panel.IsItemsHostProperty, true);
+            border.AppendChild(items);
+            template.VisualTree = border;
+            style.Setters.Add(new Setter(Control.TemplateProperty, template));
+            return style;
+        }
+
+        private static Style CreateMenuItemStyle(Window window)
+        {
+            Style style = new Style(typeof(MenuItem));
+            style.Setters.Add(new Setter(Control.ForegroundProperty, window.FindResource(Text)));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
+            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(13, 8, 13, 8)));
+            style.Setters.Add(new Setter(Control.FontSizeProperty, 12.5d));
+            style.Setters.Add(new Setter(FrameworkElement.CursorProperty, System.Windows.Input.Cursors.Hand));
+
+            ControlTemplate template = new ControlTemplate(typeof(MenuItem));
+            FrameworkElementFactory border = new FrameworkElementFactory(typeof(Border));
+            border.Name = "menuItemBorder";
+            border.SetBinding(System.Windows.Controls.Border.BackgroundProperty, new Binding("Background") { RelativeSource = TemplatedParent() });
+            border.SetValue(System.Windows.Controls.Border.CornerRadiusProperty, new CornerRadius(4));
+            FrameworkElementFactory presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+            presenter.SetBinding(ContentPresenter.ContentProperty, new Binding("Header") { RelativeSource = TemplatedParent() });
+            presenter.SetBinding(ContentPresenter.ContentTemplateProperty, new Binding("HeaderTemplate") { RelativeSource = TemplatedParent() });
+            presenter.SetBinding(ContentPresenter.MarginProperty, new Binding("Padding") { RelativeSource = TemplatedParent() });
+            presenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+            border.AppendChild(presenter);
+            template.VisualTree = border;
+
+            Trigger highlighted = new Trigger { Property = MenuItem.IsHighlightedProperty, Value = true };
+            highlighted.Setters.Add(new Setter(Control.BackgroundProperty, window.FindResource(Primary)));
+            highlighted.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+            template.Triggers.Add(highlighted);
+            Trigger disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+            disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.45));
+            template.Triggers.Add(disabled);
+            style.Setters.Add(new Setter(Control.TemplateProperty, template));
             return style;
         }
 

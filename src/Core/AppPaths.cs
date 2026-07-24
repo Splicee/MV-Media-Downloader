@@ -12,6 +12,7 @@ namespace MVMediaStudio.Core
         public static readonly string LogDirectory = Path.Combine(DataDirectory, "logs");
         public static readonly string ReportDirectory = Path.Combine(DataDirectory, "reports");
         public static readonly string SettingsPath = Path.Combine(DataDirectory, "settings.ini");
+        public static readonly string WebshareSessionPath = Path.Combine(DataDirectory, "webshare.session");
         public static readonly string DownloadLogPath = Path.Combine(LogDirectory, "download.log");
         public static readonly string ConversionLogPath = Path.Combine(LogDirectory, "conversion.log");
         public static readonly string ErrorLogPath = Path.Combine(LogDirectory, "errors.log");
@@ -39,8 +40,9 @@ namespace MVMediaStudio.Core
             try
             {
                 EnsureDirectories();
+                string detail = error == null ? "Neznámá chyba" : DiagnosticRedactor.Redact(error.ToString());
                 string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine +
-                    (error == null ? "Neznámá chyba" : error.ToString()) + Environment.NewLine + Environment.NewLine;
+                    detail + Environment.NewLine + Environment.NewLine;
                 File.AppendAllText(ErrorLogPath, line, Encoding.UTF8);
             }
             catch

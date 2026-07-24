@@ -18,6 +18,7 @@ namespace MVMediaStudio.Tests
             TestDownloadUrlParser();
             TestScrollWheel();
             TestDownloadPreset();
+            TestDownloadProviders();
             TestDiagnosticRedaction();
             TestJojResolver();
             TestConversion();
@@ -140,12 +141,35 @@ namespace MVMediaStudio.Tests
             string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             string input = home + "\\video.mkv https://example.com/watch?id=123&token=abc " +
                 "Authorization: Bearer tajne " + "AI" + "zaSyB02udgMkNLADkLJ_w5YNBMR2VR1WHfusI " +
-                "eyJabcdefghijk.abcdefghijklmnop.qwertyuiop";
+                "eyJabcdefghijk.abcdefghijklmnop.qwertyuiop wst=webshare-tajne";
             string safe = DiagnosticRedactor.Redact(input);
             True(safe.IndexOf(home, StringComparison.OrdinalIgnoreCase) < 0, "report skryje uživatelskou cestu");
             True(safe.IndexOf("tajne", StringComparison.OrdinalIgnoreCase) < 0, "report skryje autorizační údaj");
             True(safe.IndexOf("AIza", StringComparison.Ordinal) < 0, "report skryje API klíč");
             True(safe.IndexOf("id=123", StringComparison.Ordinal) < 0, "report skryje parametry URL");
+            True(safe.IndexOf("webshare-tajne", StringComparison.Ordinal) < 0, "report skryje Webshare relaci");
+            True(DiagnosticReportService.BuildEmailUrl("Test", safe).StartsWith("mailto:?", StringComparison.Ordinal), "e-mailové hlášení otevře poštovní aplikaci");
+        }
+
+        private static void TestDownloadProviders()
+        {
+            DownloadRoute webshare = DownloadSourceRouter.Classify("https://webshare.cz/#/file/7Iz5S8A4nib/nazev-souboru.mkv");
+            Equal(DownloadProviderKind.Webshare.ToString(), webshare.Kind.ToString(), "Webshare používá vlastní poskytovatel");
+            Equal("7Iz5S8A4nib", DownloadSourceRouter.ExtractWebshareIdent(webshare.Url), "Webshare načte identifikátor z hash odkazu");
+
+            DownloadRoute direct = DownloadSourceRouter.Classify("https://pf-storage4.premiumcdn.net/video.mp4?token=abc");
+            Equal(DownloadProviderKind.Direct.ToString(), direct.Kind.ToString(), "oficiální CDN odkaz používá přímé stažení");
+
+            DownloadRoute prehrajto = DownloadSourceRouter.Classify("https://prehraj.to/video/test-123");
+            Equal(DownloadProviderKind.Unsupported.ToString(), prehrajto.Kind.ToString(), "Přehraj.to stránka se nescrapuje bez veřejného API");
+
+            DownloadRoute youtube = DownloadSourceRouter.Classify("https://www.youtube.com/watch?v=abc");
+            Equal(DownloadProviderKind.YtDlp.ToString(), youtube.Kind.ToString(), "běžné video zůstává v yt-dlp");
+
+            string firstHash = WebsharePasswordHash.Create("heslo", "test1234");
+            string secondHash = WebsharePasswordHash.Create("heslo", "test1234");
+            True(firstHash.Length == 40 && firstHash == secondHash, "Webshare heslo se převádí na stabilní SHA-1 hash");
+            True(firstHash != WebsharePasswordHash.Create("heslo", "jinaSul1"), "Webshare hash používá sůl účtu");
         }
 
         private static void TestConversion()

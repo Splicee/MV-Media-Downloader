@@ -34,7 +34,7 @@ for /R "%ROOT%src" %%F in (*.cs) do set "SOURCES=!SOURCES! "%%F""
 set "ICON_ARG="
 if exist "%ROOT%assets\MVMediaStudio.ico" set "ICON_ARG=/win32icon:"%ROOT%assets\MVMediaStudio.ico""
 
-"%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 /out:"%APP_OUTPUT%" /win32manifest:"%ROOT%src\app.manifest" %ICON_ARG% /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll /reference:System.Windows.Forms.dll /reference:"%SYSTEMXAML%" /reference:"%WINDOWSBASE%" /reference:"%PRESENTATIONCORE%" /reference:"%PRESENTATIONFRAMEWORK%" /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll !SOURCES!
+"%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 /out:"%APP_OUTPUT%" /win32manifest:"%ROOT%src\app.manifest" %ICON_ARG% /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Security.dll /reference:System.Web.Extensions.dll /reference:System.Windows.Forms.dll /reference:"%SYSTEMXAML%" /reference:"%WINDOWSBASE%" /reference:"%PRESENTATIONCORE%" /reference:"%PRESENTATIONFRAMEWORK%" /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll !SOURCES!
 if errorlevel 1 (
   echo CHYBA: Sestaveni aplikace se nepovedlo.
   exit /b 1
