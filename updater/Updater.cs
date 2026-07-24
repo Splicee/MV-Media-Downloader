@@ -11,8 +11,8 @@ using System.Threading;
 [assembly: AssemblyTitle("MV Media Downloader Updater")]
 [assembly: AssemblyCompany("MV")]
 [assembly: AssemblyProduct("MV Media Downloader")]
-[assembly: AssemblyVersion("3.1.0.0")]
-[assembly: AssemblyFileVersion("3.1.0.0")]
+[assembly: AssemblyVersion("3.1.1.0")]
+[assembly: AssemblyFileVersion("3.1.1.0")]
 
 namespace MVMediaDownloaderUpdater
 {

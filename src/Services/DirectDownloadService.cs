@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Text;
@@ -93,7 +94,7 @@ namespace MVMediaStudio.Services
         {
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
             request.Method = "GET";
-            request.UserAgent = "MV-Media-Downloader/3.1.0";
+            request.UserAgent = "MV-Media-Downloader/3.1.1";
             request.AllowAutoRedirect = true;
             request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
             request.Timeout = 30000;
@@ -169,6 +170,162 @@ namespace MVMediaStudio.Services
                 Skipped = skipped,
                 Resumed = resumed
             });
+        }
+    }
+
+    internal static class DirectMediaPostProcessService
+    {
+        public static async Task<DirectPostProcessResult> ProcessAsync(
+            string ffmpegPath,
+            string ffprobePath,
+            string sourcePath,
+            string preset,
+            string quality,
+            bool subtitles,
+            bool noOverwrite,
+            bool preserveInput,
+            Action<DirectPostProcessProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(ffmpegPath) || !File.Exists(ffmpegPath))
+                throw new FileNotFoundException("FFmpeg není připravený pro převod staženého souboru.", ffmpegPath);
+
+            MediaInfo media = await Task.Run(
+                delegate { return MediaProbeService.Probe(ffprobePath, sourcePath); },
+                cancellationToken);
+            DirectPostProcessPlan plan = DirectMediaArgumentBuilder.Build(
+                sourcePath,
+                preset,
+                quality,
+                subtitles,
+                noOverwrite,
+                preserveInput,
+                media);
+
+            if (plan.ExistingOutput)
+            {
+                return new DirectPostProcessResult
+                {
+                    OutputPath = plan.OutputPath,
+                    ProfileLabel = plan.ProfileLabel,
+                    Skipped = true
+                };
+            }
+            if (!plan.Required)
+            {
+                return new DirectPostProcessResult
+                {
+                    OutputPath = sourcePath,
+                    ProfileLabel = plan.ProfileLabel,
+                    Skipped = preserveInput
+                };
+            }
+
+            StringBuilder diagnostics = new StringBuilder();
+            object diagnosticsLock = new object();
+            int exitCode = await ProcessService.RunAsync(
+                ffmpegPath,
+                plan.Arguments,
+                delegate(string line, bool isError)
+                {
+                    double percentage;
+                    if (TryReadProgress(line, plan.DurationSeconds, out percentage))
+                    {
+                        if (progress != null)
+                            progress(new DirectPostProcessProgress { Percentage = percentage, ProfileLabel = plan.ProfileLabel });
+                        return;
+                    }
+                    if (!isError)
+                        return;
+                    lock (diagnosticsLock)
+                    {
+                        diagnostics.AppendLine(line);
+                        if (diagnostics.Length > 12000)
+                            diagnostics.Remove(0, diagnostics.Length - 9000);
+                    }
+                },
+                cancellationToken);
+
+            if (exitCode == -2)
+            {
+                DeleteTemporary(plan.WorkingOutputPath);
+                throw new OperationCanceledException(cancellationToken);
+            }
+            if (exitCode != 0)
+            {
+                DeleteTemporary(plan.WorkingOutputPath);
+                string detail;
+                lock (diagnosticsLock)
+                    detail = Tail(diagnostics.ToString(), 1600);
+                throw new InvalidOperationException(
+                    "FFmpeg nedokončil převod do profilu " + plan.ProfileLabel + "." +
+                    (string.IsNullOrWhiteSpace(detail) ? "" : "\n" + detail));
+            }
+            if (!File.Exists(plan.WorkingOutputPath) || new FileInfo(plan.WorkingOutputPath).Length == 0)
+            {
+                DeleteTemporary(plan.WorkingOutputPath);
+                throw new InvalidOperationException("FFmpeg nevytvořil výsledný soubor.");
+            }
+
+            try
+            {
+                if (plan.ReplaceInput)
+                {
+                    string backupPath = sourcePath + ".mvbackup-" + Guid.NewGuid().ToString("N");
+                    File.Replace(plan.WorkingOutputPath, sourcePath, backupPath, true);
+                    DeleteTemporary(backupPath);
+                }
+                else
+                {
+                    File.Move(plan.WorkingOutputPath, plan.OutputPath);
+                    if (!plan.PreserveInput)
+                        DeleteTemporary(sourcePath);
+                }
+            }
+            catch
+            {
+                DeleteTemporary(plan.WorkingOutputPath);
+                throw;
+            }
+
+            return new DirectPostProcessResult
+            {
+                OutputPath = plan.OutputPath,
+                ProfileLabel = plan.ProfileLabel,
+                Processed = true
+            };
+        }
+
+        private static bool TryReadProgress(string line, double durationSeconds, out double percentage)
+        {
+            percentage = 0;
+            if (durationSeconds <= 0 ||
+                (!line.StartsWith("out_time_ms=", StringComparison.OrdinalIgnoreCase) &&
+                 !line.StartsWith("out_time_us=", StringComparison.OrdinalIgnoreCase)))
+                return false;
+            int split = line.IndexOf('=');
+            double microseconds;
+            if (split < 0 || !double.TryParse(
+                line.Substring(split + 1),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out microseconds))
+                return false;
+            percentage = Math.Max(0, Math.Min(99, microseconds / 1000000d / durationSeconds * 100d));
+            return true;
+        }
+
+        private static string Tail(string value, int maximumLength)
+        {
+            string text = (value ?? "").Trim();
+            return text.Length <= maximumLength ? text : text.Substring(text.Length - maximumLength);
+        }
+
+        private static void DeleteTemporary(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                return;
+            try { File.Delete(path); } catch { }
         }
     }
 }

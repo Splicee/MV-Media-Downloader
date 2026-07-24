@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 
@@ -16,6 +17,33 @@ namespace MVMediaStudio.Core
         public string CookieBrowserSpec;
         public bool NoOverwrite;
         public string ExtraArguments;
+    }
+
+    internal sealed class DirectPostProcessPlan
+    {
+        public bool Required;
+        public bool ExistingOutput;
+        public bool ReplaceInput;
+        public bool PreserveInput;
+        public string OutputPath;
+        public string WorkingOutputPath;
+        public string ProfileLabel;
+        public double DurationSeconds;
+        public List<string> Arguments = new List<string>();
+    }
+
+    internal sealed class DirectPostProcessResult
+    {
+        public string OutputPath;
+        public string ProfileLabel;
+        public bool Processed;
+        public bool Skipped;
+    }
+
+    internal sealed class DirectPostProcessProgress
+    {
+        public double Percentage;
+        public string ProfileLabel;
     }
 
     internal sealed class ConversionOptions

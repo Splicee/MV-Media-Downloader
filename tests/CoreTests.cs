@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using MVMediaStudio.Core;
 using MVMediaStudio.Services;
 
@@ -18,6 +19,7 @@ namespace MVMediaStudio.Tests
             TestDownloadUrlParser();
             TestScrollWheel();
             TestDownloadPreset();
+            TestDirectPostProcessing();
             TestDownloadProviders();
             TestDiagnosticRedaction();
             TestJojResolver();
@@ -67,6 +69,15 @@ namespace MVMediaStudio.Tests
             List<string> slugUrls = DownloadUrlParser.Parse(slugInput);
             Equal("56", slugUrls.Count.ToString(), "seznam slugů načte všech 56 odkazů");
             Equal("https://play.joj.sk/player/inkognito-s2-e56?type=VIDEO", slugUrls[55], "poslední slug JOJ se neztratí");
+
+            string firstWebshare = "https://webshare.cz/#/file/Vzgv8t6d2P/prvni.mkv";
+            string secondWebshare = "https://webshare.cz/#/file/gNQNhJMfu2/druhy.mkv";
+            string markdown = "[**" + firstWebshare + "**](" + firstWebshare + ")\r\n" +
+                "[**" + secondWebshare + "**](" + secondWebshare + ")";
+            List<string> markdownUrls = DownloadUrlParser.Parse(markdown);
+            Equal("2", markdownUrls.Count.ToString(), "Markdown seznam Webshare odstraní duplicitní odkazy");
+            Equal(firstWebshare, markdownUrls[0], "Markdown zachová první Webshare odkaz");
+            Equal(secondWebshare, markdownUrls[1], "Markdown zachová druhý Webshare odkaz");
         }
 
         private static void TestJojResolver()
@@ -136,6 +147,49 @@ namespace MVMediaStudio.Tests
             try { Directory.Delete(pluginDirectory, true); } catch { }
         }
 
+        private static void TestDirectPostProcessing()
+        {
+            string temp = Path.Combine(Path.GetTempPath(), "mv-media-direct-profile-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(temp);
+            string input = Path.Combine(temp, "video.mkv");
+            File.WriteAllText(input, "test");
+            try
+            {
+                MediaInfo media = new MediaInfo { Codec = "H.265 / HEVC", Width = 1920, Height = 1080, DurationSeconds = 60 };
+                DirectPostProcessPlan mp4 = DirectMediaArgumentBuilder.Build(input, "mp4-h264", "720", true, false, false, media);
+                True(mp4.Required, "Webshare MKV se převede podle zvoleného profilu");
+                True(mp4.OutputPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase), "Webshare profil vytvoří MP4");
+                True(mp4.Arguments.Contains("libx264"), "Webshare MP4 používá H.264");
+                True(mp4.Arguments.Contains("scale=-2:720"), "Webshare respektuje maximální kvalitu");
+                True(mp4.Arguments.Contains("0:s?") && mp4.Arguments.Contains("mov_text"), "Webshare umí převést vložené titulky");
+
+                DirectPostProcessPlan originalMkv = DirectMediaArgumentBuilder.Build(input, "mkv-best", "auto", false, true, false, media);
+                True(!originalMkv.Required && originalMkv.OutputPath == input, "MKV v původní kvalitě se zbytečně nepřevádí");
+
+                DirectPostProcessPlan mp3 = DirectMediaArgumentBuilder.Build(input, "audio-mp3", "auto", false, false, false, media);
+                True(mp3.Required && mp3.OutputPath.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase), "Webshare umí vyjmout MP3");
+                True(mp3.Arguments.Contains("libmp3lame") && mp3.Arguments.Contains("0:a:0"), "MP3 použije první zvukovou stopu");
+
+                string existingMp4 = Path.Combine(temp, "hotovo.mp4");
+                string convertedMp4 = Path.Combine(temp, "hotovo - převedeno.mp4");
+                File.WriteAllText(existingMp4, "source");
+                File.WriteAllText(convertedMp4, "result");
+                DirectPostProcessPlan existingResult = DirectMediaArgumentBuilder.Build(
+                    existingMp4,
+                    "mp4-h264",
+                    "auto",
+                    false,
+                    true,
+                    true,
+                    media);
+                True(existingResult.ExistingOutput && existingResult.OutputPath == convertedMp4, "Existující převod stejného typu se neduplikuje");
+            }
+            finally
+            {
+                try { Directory.Delete(temp, true); } catch { }
+            }
+        }
+
         private static void TestDiagnosticRedaction()
         {
             string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -170,6 +224,13 @@ namespace MVMediaStudio.Tests
             string secondHash = WebsharePasswordHash.Create("heslo", "test1234");
             True(firstHash.Length == 40 && firstHash == secondHash, "Webshare heslo se převádí na stabilní SHA-1 hash");
             True(firstHash != WebsharePasswordHash.Create("heslo", "jinaSul1"), "Webshare hash používá sůl účtu");
+
+            using (WebClient client = new WebClient())
+            {
+                WebshareService.ConfigureApiClient(client);
+                True(string.IsNullOrWhiteSpace(client.Headers[HttpRequestHeader.ContentType]), "Webshare nepřepisuje Content-Type spravovaný UploadValues");
+                True(client.Headers[HttpRequestHeader.Accept] == "text/xml; charset=UTF-8", "Webshare očekává XML odpověď");
+            }
         }
 
         private static void TestConversion()
@@ -239,15 +300,15 @@ namespace MVMediaStudio.Tests
         {
             string hash = new string('a', 64);
             string json = "{" +
-                "\"tag_name\":\"v3.1.0\"," +
-                "\"html_url\":\"https://github.com/mv/MV-Media-Downloader/releases/tag/v3.1.0\"," +
+                "\"tag_name\":\"v3.1.1\"," +
+                "\"html_url\":\"https://github.com/mv/MV-Media-Downloader/releases/tag/v3.1.1\"," +
                 "\"draft\":false,\"prerelease\":false," +
                 "\"assets\":[" +
                 "{\"name\":\"MV-Media-Downloader-win-x64.zip\",\"browser_download_url\":\"https://github.com/mv/app.zip\",\"digest\":\"sha256:" + hash + "\"}," +
                 "{\"name\":\"MV-Media-Downloader-win-x64.zip.sha256\",\"browser_download_url\":\"https://github.com/mv/app.sha256\"}]}";
 
             UpdateReleaseInfo release = UpdateMetadata.ParseRelease(json);
-            Equal("3.1.0", release.Version.ToString(3), "verze aktualizace z GitHub Release");
+            Equal("3.1.1", release.Version.ToString(3), "verze aktualizace z GitHub Release");
             Equal(hash, release.Sha256, "SHA-256 z GitHub metadat");
             Equal(hash, UpdateMetadata.ParseChecksum(hash.ToUpperInvariant() + "  MV-Media-Downloader-win-x64.zip\r\n"), "SHA-256 ze souboru");
             Equal("", UpdateMetadata.ParseChecksum("neplatny soucet"), "neplatný SHA-256 se odmítne");

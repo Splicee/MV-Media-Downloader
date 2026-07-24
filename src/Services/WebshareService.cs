@@ -74,6 +74,7 @@ namespace MVMediaStudio.Services
             XmlDocument info = await PostAsync("file_info/", FormWithSession(new Dictionary<string, string>
             {
                 { "ident", ident },
+                { "password", "" },
                 { "maybe_removed", "0" }
             }));
             EnsureOk(info);
@@ -127,14 +128,22 @@ namespace MVMediaStudio.Services
             {
                 using (WebshareWebClient client = new WebshareWebClient())
                 {
-                    client.Headers[HttpRequestHeader.ContentType] = "application/x-www-form-urlencoded; charset=UTF-8";
-                    client.Headers[HttpRequestHeader.Accept] = "text/xml; charset=UTF-8";
+                    ConfigureApiClient(client);
                     byte[] response = client.UploadValues(ApiBase + endpoint, "POST", ToNameValueCollection(values));
                     XmlDocument document = new XmlDocument();
                     document.LoadXml(Encoding.UTF8.GetString(response));
                     return document;
                 }
             });
+        }
+
+        internal static void ConfigureApiClient(WebClient client)
+        {
+            if (client == null)
+                throw new ArgumentNullException("client");
+            ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+            client.Encoding = Encoding.UTF8;
+            client.Headers[HttpRequestHeader.Accept] = "text/xml; charset=UTF-8";
         }
 
         private static System.Collections.Specialized.NameValueCollection ToNameValueCollection(Dictionary<string, string> values)
@@ -151,8 +160,10 @@ namespace MVMediaStudio.Services
                 return;
             string code = Value(document, "code");
             string message = Value(document, "message");
-            if (code == "FILE_LINK_FATAL_3")
-                message = "Soubor vyžaduje heslo.";
+            if (code == "FILE_INFO_FATAL_2" || code == "FILE_LINK_FATAL_3")
+                message = "Soubor Webshare je chráněný samostatným heslem souboru. Přihlášení k účtu toto heslo nenahrazuje.";
+            else if (code == "FILE_INFO_FATAL_3")
+                message = "Webshare tento soubor neposkytlo přes veřejné API. Přihlas se účtem, který k němu má oprávněný přístup.";
             else if (code == "FILE_LINK_FATAL_4")
                 message = "Soubor je dočasně nedostupný.";
             else if (code == "FILE_LINK_FATAL_5")
@@ -215,7 +226,7 @@ namespace MVMediaStudio.Services
             public WebshareWebClient()
             {
                 Encoding = Encoding.UTF8;
-                Headers[HttpRequestHeader.UserAgent] = "MV-Media-Downloader/3.1.0";
+                Headers[HttpRequestHeader.UserAgent] = "MV-Media-Downloader/3.1.1";
             }
 
             protected override WebRequest GetWebRequest(Uri address)

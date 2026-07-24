@@ -16,6 +16,8 @@ Windows aplikace od MV pro stahování médií přes yt-dlp, Webshare a přímé
 - instalace a kontrola yt-dlp, FFmpeg a Deno přímo z aplikace;
 - Webshare přes oficiální API, volitelné přihlášení a relace chráněná účtem Windows;
 - vlastní HTTP downloader s navázáním `.part`, průběhem a živou změnou limitu rychlosti;
+- Webshare a přímé soubory respektují zvolený formát i maximální kvalitu pomocí následného FFmpeg převodu;
+- Markdown seznamy odkazů se čistí a stejné adresy se zpracují pouze jednou;
 - přímé soubory a oficiální dočasné CDN odkazy bez předávání tokenů do logu;
 - hlášení chyb přes GitHub nebo výchozí e-mailovou aplikaci;
 - automatické aktualizace přes ověřené GitHub Releases.
@@ -68,9 +70,11 @@ Reálné integrační testy jsou dostupné přes `integration-test.cmd` a `joj-t
 
 ## Webshare a přímé odkazy
 
-Odkazy `webshare.cz/#/file/...` zpracovává aplikace přes oficiální Webshare API. Veřejné soubory fungují bez účtu, u souborů vyžadujících přihlášení použij **Přihlásit Webshare**. Heslo se neukládá a zapamatovaná relace je chráněná účtem Windows.
+Odkazy `webshare.cz/#/file/...` zpracovává aplikace přes oficiální Webshare API. Veřejné soubory fungují bez účtu, u souborů vyžadujících přihlášení použij **Přihlásit Webshare**. Heslo se neukládá a zapamatovaná relace je chráněná účtem Windows. Samostatné heslo chránící konkrétní soubor musí jeho vlastník zpřístupnit zvlášť; přihlášení k účtu ho nenahrazuje.
 
 Vlastní downloader umí běžné přímé HTTP/HTTPS odkazy, dočasné CDN odkazy, navázání přerušeného `.part` souboru a okamžitou změnu limitu rychlosti. Běžná stránka Přehraj.to se automaticky nezpracovává, protože služba neposkytuje povolené veřejné API. Použít lze oficiální přímý odkaz ke stažení nebo CDN odkaz získaný uživatelem z vlastního účtu.
+
+U mediálních souborů se po stažení použije volba z pole **Typ souboru**. MP4 se převádí do H.264/AAC, WebM do VP9/Opus, zvukové profily vyjmou první zvukovou stopu a **MKV / nejlepší** zachová původní datové proudy, pokud není potřeba snížit rozlišení. Při neúspěšném nebo zrušeném převodu se stažený originál nemaže.
 
 ## Podpis EXE
 

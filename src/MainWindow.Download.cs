@@ -156,6 +156,7 @@ namespace MVMediaStudio
                 new ComboItem("audio-opus", "Pouze zvuk · Opus"),
                 new ComboItem("audio-flac", "Pouze zvuk · FLAC bezztrátový"),
                 new ComboItem("video-only", "Pouze obraz · bez zvuku"));
+            downloadFormatCombo.ToolTip = "U Webshare a přímých souborů se výsledek po stažení připraví přes FFmpeg.";
             SelectCombo(downloadFormatCombo, settings.DownloadPreset);
             choices.Children.Add(Labeled("Typ souboru", downloadFormatCombo));
 
@@ -166,6 +167,7 @@ namespace MVMediaStudio
                 new ComboItem("1080", "Až 1080p"),
                 new ComboItem("720", "Až 720p"),
                 new ComboItem("480", "Až 480p"));
+            downloadQualityCombo.ToolTip = "Vyšší video zůstane zachované nebo se zmenší na zvolenou maximální výšku.";
             SelectCombo(downloadQualityCombo, settings.DownloadQuality);
             Border quality = Labeled("Kvalita", downloadQualityCombo);
             quality.Margin = new Thickness(12, 0, 0, 0);
@@ -429,6 +431,8 @@ namespace MVMediaStudio
                 downloadCookiesCheck.IsChecked = true;
             if (ytDlpUrls.Count > 0 && !await EnsureYtDlpAsync())
                 return;
+            if (directRoutes.Count > 0 && !await EnsureFfmpegAsync())
+                return;
 
             downloadLog.Clear();
             downloadLiveLogLine = "";
@@ -504,7 +508,9 @@ namespace MVMediaStudio
                         break;
                     }
 
-                    DirectDownloadItem item;
+                    DirectDownloadItem item = null;
+                    string downloadedPath = "";
+                    bool sourceSkipped = false;
                     try
                     {
                         if (route.Kind == DownloadProviderKind.Webshare)
@@ -518,16 +524,43 @@ namespace MVMediaStudio
                                 FileName = DownloadSourceRouter.FileNameFromUrl(route.Url)
                             };
                         AppendDownloadLog("[" + item.Provider + "] " + item.FileName);
-                        await DirectDownloadService.DownloadAsync(
+                        downloadedPath = await DirectDownloadService.DownloadAsync(
                             item,
                             settings.DownloadDirectory,
                             options.NoOverwrite,
                             CurrentDirectRateLimitBytes,
-                            HandleDirectDownloadProgress,
+                            delegate(DirectDownloadProgress progress)
+                            {
+                                if (progress.Completed)
+                                {
+                                    sourceSkipped = progress.Skipped;
+                                    return;
+                                }
+                                HandleDirectDownloadProgress(progress);
+                            },
                             activeCancellation.Token);
+                        downloadCanApplyRate = false;
+                        CommitDownloadLiveLog();
+                        downloadProgress.Value = 0;
+                        downloadProgressPercent.Text = "0 %";
+                        SetDownloadStatus("Připravuji výsledek", item.Provider + " · " + item.FileName, Theme.Primary);
+                        DirectPostProcessResult processed = await DirectMediaPostProcessService.ProcessAsync(
+                            tools.FfmpegPath,
+                            tools.FfprobePath,
+                            downloadedPath,
+                            options.Preset,
+                            options.Quality,
+                            options.Subtitles,
+                            options.NoOverwrite,
+                            sourceSkipped,
+                            delegate(DirectPostProcessProgress progress) { HandleDirectPostProcessProgress(item, progress); },
+                            activeCancellation.Token);
+                        MarkDirectDownloadCompleted(item, processed);
                     }
                     catch (OperationCanceledException)
                     {
+                        if (!string.IsNullOrWhiteSpace(downloadedPath) && File.Exists(downloadedPath))
+                            AppendDownloadLog("[Zachováno po zrušení] " + downloadedPath);
                         exitCode = -2;
                         break;
                     }
@@ -536,6 +569,8 @@ namespace MVMediaStudio
                         exitCode = 1;
                         AppPaths.WriteError(error);
                         AppendDownloadLog("! [" + route.Provider + "] " + error.Message);
+                        if (item != null && !string.IsNullOrWhiteSpace(downloadedPath) && File.Exists(downloadedPath))
+                            MarkDirectDownloadRetained(item, downloadedPath);
                     }
                 }
                 activeCancellation = null;
@@ -669,6 +704,53 @@ namespace MVMediaStudio
                     (progress.TotalBytes > 0 ? percentage.ToString("0.#") + "% " : "") +
                     FormatByteSize(progress.BytesReceived) + " · " + FormatTransferSpeed(progress.BytesPerSecond));
             }));
+        }
+
+        private void HandleDirectPostProcessProgress(DirectDownloadItem item, DirectPostProcessProgress progress)
+        {
+            Dispatcher.BeginInvoke(new Action(delegate
+            {
+                downloadCanApplyRate = false;
+                double percentage = Math.Max(0, Math.Min(100, progress.Percentage));
+                downloadProgress.Value = percentage;
+                downloadProgressPercent.Text = percentage.ToString("0.#") + " %";
+                SetDownloadStatus(
+                    "Převádím stažený soubor",
+                    item.Provider + " · " + progress.ProfileLabel + " · " + percentage.ToString("0.#") + " %",
+                    Theme.Primary);
+                SetDownloadLiveLog(
+                    "[FFmpeg] " + item.FileName + " · " + progress.ProfileLabel + " · " + percentage.ToString("0.#") + " %");
+            }));
+        }
+
+        private void MarkDirectDownloadCompleted(DirectDownloadItem item, DirectPostProcessResult result)
+        {
+            CommitDownloadLiveLog();
+            if (downloadCompletedPaths.Add(result.OutputPath))
+                downloadCompletedItems++;
+            downloadProgress.Value = 100;
+            downloadProgressPercent.Text = "100 %";
+            if (result.Skipped)
+                AppendDownloadLog("[Přeskočeno] " + result.OutputPath);
+            else if (result.Processed)
+                AppendDownloadLog("[Převedeno] " + result.OutputPath);
+            else
+                AppendDownloadLog("[Hotovo] " + result.OutputPath);
+            SetDownloadStatus(
+                result.Skipped ? "Výsledek už existuje" : result.Processed ? "Soubor převeden" : "Soubor dokončen",
+                item.Provider + " · " + result.ProfileLabel,
+                result.Skipped ? Theme.Warning : Theme.Success);
+        }
+
+        private void MarkDirectDownloadRetained(DirectDownloadItem item, string path)
+        {
+            CommitDownloadLiveLog();
+            if (downloadCompletedPaths.Add(path))
+                downloadCompletedItems++;
+            downloadProgress.Value = 100;
+            downloadProgressPercent.Text = "100 %";
+            AppendDownloadLog("[Originál zachován] " + path);
+            SetDownloadStatus("Převod se nepovedl", item.Provider + " · původní soubor zůstal zachovaný", Theme.Warning);
         }
 
         private long CurrentDirectRateLimitBytes()

@@ -40,7 +40,7 @@ namespace MVMediaStudio.Tests
             string projectRoot = Directory.GetParent(AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).FullName;
             runDirectory = Path.Combine(projectRoot, "artifacts", "real-tests", "run-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
             Directory.CreateDirectory(runDirectory);
-            Log("MV Media Downloader 3.1.0 – reálné integrační testy");
+            Log("MV Media Downloader 3.1.1 – reálné integrační testy");
             Log("Start: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
             Log("Výstup: " + runDirectory);
 
@@ -95,7 +95,7 @@ namespace MVMediaStudio.Tests
                 await RunConversionAsync(test);
 
             Log("");
-            Log(failures == 0 ? "VÝSLEDEK: Všech 10 reálných testů prošlo." : "VÝSLEDEK: Selhání " + failures + ".");
+            Log(failures == 0 ? "VÝSLEDEK: Všech 11 reálných testů prošlo." : "VÝSLEDEK: Selhání " + failures + ".");
             Log("Konec: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
             SaveReport();
             Console.WriteLine("REPORT=" + Path.Combine(runDirectory, "integration-report.txt"));
@@ -192,6 +192,27 @@ namespace MVMediaStudio.Tests
             byte[] resumed = File.ReadAllBytes(resumedPath);
             bool resumeDetected = events.Any(value => value.Resumed);
             Pass(resumeDetected && resumed.Length == original.Length && Sha256(resumed) == originalHash, "D6-native-http navázání .part", "resume=" + resumeDetected + ", velikost=" + resumed.Length);
+
+            List<DirectPostProcessProgress> conversionProgress = new List<DirectPostProcessProgress>();
+            DirectPostProcessResult converted = await DirectMediaPostProcessService.ProcessAsync(
+                tools.FfmpegPath,
+                tools.FfprobePath,
+                resumedPath,
+                "mp4-h264",
+                "480",
+                false,
+                false,
+                true,
+                delegate(DirectPostProcessProgress value) { lock (conversionProgress) conversionProgress.Add(value); },
+                CancellationToken.None);
+            MediaInfo convertedInfo = File.Exists(converted.OutputPath) ? MediaProbeService.Probe(tools.FfprobePath, converted.OutputPath) : new MediaInfo();
+            bool postProcessOk = converted.Processed &&
+                File.Exists(converted.OutputPath) &&
+                new FileInfo(converted.OutputPath).Length > 1024 &&
+                convertedInfo.Codec == "H.264" &&
+                convertedInfo.Height <= 480 &&
+                conversionProgress.Count > 0;
+            Pass(postProcessOk, "D7-native-http profil MP4 / H.264", "kodek=" + convertedInfo.Codec + ", výška=" + convertedInfo.Height);
         }
 
         private static string Sha256(byte[] value)

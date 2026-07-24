@@ -242,6 +242,222 @@ namespace MVMediaStudio.Core
         }
     }
 
+    internal static class DirectMediaArgumentBuilder
+    {
+        private static readonly HashSet<string> MediaExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v",
+            ".mp3", ".m4a", ".aac", ".opus", ".ogg", ".flac", ".wav"
+        };
+
+        public static DirectPostProcessPlan Build(
+            string inputPath,
+            string preset,
+            string quality,
+            bool subtitles,
+            bool noOverwrite,
+            bool preserveInput,
+            MediaInfo media)
+        {
+            if (string.IsNullOrWhiteSpace(inputPath) || !File.Exists(inputPath))
+                throw new FileNotFoundException("Stažený soubor neexistuje.", inputPath);
+
+            DirectPostProcessPlan plan = new DirectPostProcessPlan
+            {
+                OutputPath = inputPath,
+                PreserveInput = preserveInput,
+                ProfileLabel = "Původní soubor"
+            };
+            if (!MediaExtensions.Contains(Path.GetExtension(inputPath)))
+                return plan;
+
+            string mode = string.IsNullOrWhiteSpace(preset) ? "mp4-h264" : preset.ToLowerInvariant();
+            string inputExtension = Path.GetExtension(inputPath).ToLowerInvariant();
+            int maximumHeight = QualityHeight(quality);
+            bool needsScale = maximumHeight > 0 && media != null && media.Height > maximumHeight;
+            string outputExtension;
+
+            switch (mode)
+            {
+                case "mkv-best":
+                    outputExtension = ".mkv";
+                    plan.ProfileLabel = needsScale ? "MKV / H.264" : "MKV / původní kvalita";
+                    if (inputExtension == outputExtension && !needsScale)
+                        return plan;
+                    break;
+                case "webm":
+                    outputExtension = ".webm";
+                    plan.ProfileLabel = "WebM / VP9";
+                    if (inputExtension == outputExtension && !needsScale)
+                        return plan;
+                    break;
+                case "audio-m4a":
+                    outputExtension = ".m4a";
+                    plan.ProfileLabel = "M4A / AAC";
+                    if (inputExtension == outputExtension)
+                        return plan;
+                    break;
+                case "audio-mp3":
+                    outputExtension = ".mp3";
+                    plan.ProfileLabel = "MP3";
+                    if (inputExtension == outputExtension)
+                        return plan;
+                    break;
+                case "audio-opus":
+                    outputExtension = ".opus";
+                    plan.ProfileLabel = "Opus";
+                    if (inputExtension == outputExtension)
+                        return plan;
+                    break;
+                case "audio-flac":
+                    outputExtension = ".flac";
+                    plan.ProfileLabel = "FLAC";
+                    if (inputExtension == outputExtension)
+                        return plan;
+                    break;
+                case "video-only":
+                    outputExtension = ".mp4";
+                    plan.ProfileLabel = "MP4 / H.264 bez zvuku";
+                    break;
+                default:
+                    mode = "mp4-h264";
+                    outputExtension = ".mp4";
+                    plan.ProfileLabel = "MP4 / H.264";
+                    if (inputExtension == outputExtension &&
+                        media != null &&
+                        string.Equals(media.Codec, "H.264", StringComparison.OrdinalIgnoreCase) &&
+                        !needsScale)
+                        return plan;
+                    break;
+            }
+
+            string desiredPath = Path.ChangeExtension(inputPath, outputExtension);
+            bool samePath = string.Equals(
+                Path.GetFullPath(desiredPath),
+                Path.GetFullPath(inputPath),
+                StringComparison.OrdinalIgnoreCase);
+
+            if (samePath && preserveInput)
+            {
+                desiredPath = Path.Combine(
+                    Path.GetDirectoryName(inputPath),
+                    Path.GetFileNameWithoutExtension(inputPath) + " - převedeno" + outputExtension);
+                samePath = false;
+            }
+            if (!samePath && File.Exists(desiredPath))
+            {
+                if (noOverwrite)
+                {
+                    plan.ExistingOutput = true;
+                    plan.OutputPath = desiredPath;
+                    return plan;
+                }
+                desiredPath = UniquePath(
+                    Path.GetDirectoryName(desiredPath),
+                    Path.GetFileNameWithoutExtension(desiredPath),
+                    outputExtension);
+            }
+
+            plan.Required = true;
+            plan.ReplaceInput = samePath;
+            plan.OutputPath = samePath ? inputPath : desiredPath;
+            plan.WorkingOutputPath = TemporaryPath(plan.OutputPath, outputExtension);
+            plan.DurationSeconds = media == null ? 0 : media.DurationSeconds;
+
+            List<string> args = plan.Arguments;
+            args.AddRange(new[] { "-y", "-hide_banner", "-loglevel", "warning", "-i", inputPath });
+
+            if (mode == "audio-m4a" || mode == "audio-mp3" || mode == "audio-opus" || mode == "audio-flac")
+            {
+                args.AddRange(new[] { "-map", "0:a:0", "-vn", "-sn", "-map_metadata", "0" });
+                if (mode == "audio-mp3")
+                    args.AddRange(new[] { "-c:a", "libmp3lame", "-b:a", "320k" });
+                else if (mode == "audio-opus")
+                    args.AddRange(new[] { "-c:a", "libopus", "-b:a", "192k" });
+                else if (mode == "audio-flac")
+                    args.AddRange(new[] { "-c:a", "flac" });
+                else
+                    args.AddRange(new[] { "-c:a", "aac", "-b:a", "256k", "-movflags", "+faststart" });
+            }
+            else if (mode == "mkv-best" && !needsScale)
+            {
+                args.AddRange(new[] { "-map", "0:v?", "-map", "0:a?" });
+                if (subtitles)
+                    args.AddRange(new[] { "-map", "0:s?" });
+                args.AddRange(new[] { "-map_metadata", "0", "-map_chapters", "0", "-c", "copy" });
+            }
+            else if (mode == "webm")
+            {
+                args.AddRange(new[] { "-map", "0:v:0", "-map", "0:a?" });
+                if (subtitles)
+                    args.AddRange(new[] { "-map", "0:s?" });
+                args.AddRange(new[] { "-c:v", "libvpx-vp9", "-crf", "30", "-b:v", "0", "-c:a", "libopus", "-b:a", "160k" });
+                if (subtitles)
+                    args.AddRange(new[] { "-c:s", "webvtt" });
+                AddScale(args, needsScale, maximumHeight);
+            }
+            else
+            {
+                args.AddRange(new[] { "-map", "0:v:0" });
+                if (mode != "video-only")
+                    args.AddRange(new[] { "-map", "0:a?" });
+                if (subtitles && mode != "video-only")
+                    args.AddRange(new[] { "-map", "0:s?" });
+                args.AddRange(new[] { "-c:v", "libx264", "-preset", "medium", "-crf", "21" });
+                AddScale(args, needsScale, maximumHeight);
+
+                if (mode == "mkv-best")
+                {
+                    args.AddRange(new[] { "-c:a", "copy" });
+                    if (subtitles)
+                        args.AddRange(new[] { "-c:s", "copy" });
+                }
+                else if (mode == "video-only")
+                {
+                    args.AddRange(new[] { "-an", "-sn", "-movflags", "+faststart" });
+                }
+                else
+                {
+                    args.AddRange(new[] { "-c:a", "aac", "-b:a", "192k" });
+                    if (subtitles)
+                        args.AddRange(new[] { "-c:s", "mov_text" });
+                    args.AddRange(new[] { "-movflags", "+faststart" });
+                }
+            }
+
+            args.AddRange(new[] { "-progress", "pipe:1", "-nostats", plan.WorkingOutputPath });
+            return plan;
+        }
+
+        private static void AddScale(List<string> args, bool required, int height)
+        {
+            if (required)
+                args.AddRange(new[] { "-vf", "scale=-2:" + height });
+        }
+
+        private static int QualityHeight(string quality)
+        {
+            int value;
+            return int.TryParse((quality ?? "").Trim(), out value) &&
+                (value == 480 || value == 720 || value == 1080 || value == 1440 || value == 2160) ? value : 0;
+        }
+
+        private static string TemporaryPath(string outputPath, string extension)
+        {
+            return Path.Combine(
+                Path.GetDirectoryName(outputPath),
+                Path.GetFileNameWithoutExtension(outputPath) + ".mvtmp-" + Guid.NewGuid().ToString("N") + extension);
+        }
+
+        private static string UniquePath(string directory, string baseName, string extension)
+        {
+            string path = Path.Combine(directory, baseName + extension);
+            for (int index = 2; File.Exists(path); index++)
+                path = Path.Combine(directory, baseName + " (" + index + ")" + extension);
+            return path;
+        }
+    }
+
     internal static class ConversionArgumentBuilder
     {
         public static List<string> Build(ConversionOptions options, out string outputPath)

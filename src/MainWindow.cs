@@ -139,7 +139,7 @@ namespace MVMediaStudio
             footerStatus = Text("Připraveno", 11.5, Theme.Muted);
             footerStatus.VerticalAlignment = VerticalAlignment.Center;
             footer.Children.Add(footerStatus);
-            TextBlock version = Text("MV Media Downloader 3.1.0", 11.5, Theme.Muted);
+            TextBlock version = Text("MV Media Downloader 3.1.1", 11.5, Theme.Muted);
             version.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(version, 1);
             footer.Children.Add(version);
