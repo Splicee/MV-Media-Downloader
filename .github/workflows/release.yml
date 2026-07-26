@@ -36,8 +36,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $assets = @("release/MV-Media-Downloader-win-x64.zip", "release/MV-Media-Downloader-win-x64.zip.sha256")
-          gh release view "$env:RELEASE_TAG" 2>$null
-          if ($LASTEXITCODE -eq 0) {
+          $previousErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = "Continue"
+          gh release view "$env:RELEASE_TAG" *> $null
+          $releaseExists = $LASTEXITCODE -eq 0
+          $ErrorActionPreference = $previousErrorActionPreference
+          if ($releaseExists) {
             gh release upload "$env:RELEASE_TAG" $assets --clobber
           } else {
             gh release create "$env:RELEASE_TAG" $assets --title "MV Media Downloader $env:RELEASE_TAG" --generate-notes --verify-tag
