@@ -24,6 +24,7 @@ namespace MVMediaStudio.Tests
             TestDiagnosticRedaction();
             TestJojResolver();
             TestConversion();
+            TestMediaFileSupport();
             TestUpdateMetadata();
             Console.WriteLine(failures == 0 ? "Všechny testy prošly." : "Počet chyb: " + failures);
             return failures == 0 ? 0 : 1;
@@ -38,6 +39,14 @@ namespace MVMediaStudio.Tests
             Equal("-1", ScrollWheelTuning.ConsumeSteps(ref remainder, -30).ToString(), "úplný krok posune jednou");
             Equal("0", remainder.ToString(), "po úplném kroku nezůstane přebytek");
             Equal("2", ScrollWheelTuning.ConsumeSteps(ref remainder, 240).ToString(), "dva kroky se zachovají");
+        }
+
+        private static void TestMediaFileSupport()
+        {
+            True(MediaFileSupport.IsSupportedVideo(@"C:\Video\ukazka.MP4"), "konverze přijme běžné video");
+            True(MediaFileSupport.IsSupportedVideo(@"C:\Video\ukazka.m2ts"), "konverze přijme M2TS");
+            True(!MediaFileSupport.IsSupportedVideo(@"C:\Hudba\skladba.mp3"), "video konverze odmítne samostatný zvuk");
+            True(!MediaFileSupport.IsSupportedVideo(""), "konverze odmítne prázdnou cestu");
         }
 
         private static void TestDownloadUrlParser()
@@ -127,6 +136,17 @@ namespace MVMediaStudio.Tests
             int pluginIndex = args.IndexOf("--plugin-dirs");
             True(pluginIndex >= 0 && args[pluginIndex + 1] == pluginDirectory, "JOJ plugin se předá yt-dlp výslovně");
 
+            cookieOptions.CookieBrowserSpec = "edge";
+            cookieOptions.RateLimit = "";
+            args = DownloadArgumentBuilder.Build(cookieOptions, new[] { "https://www.youtube.com/watch?v=test" }, new ToolState());
+            cookieIndex = args.IndexOf("--cookies-from-browser");
+            True(cookieIndex >= 0 && args[cookieIndex + 1] == "edge", "přihlášení lze načíst z vybraného prohlížeče");
+            True(!args.Contains("--impersonate"), "běžné weby nepoužívají zbytečnou impersonaci");
+
+            args = DownloadArgumentBuilder.Build(cookieOptions, new[] { "https://www.mujrozhlas.cz/porad/epizoda" }, new ToolState());
+            int impersonateIndex = args.IndexOf("--impersonate");
+            True(impersonateIndex >= 0 && args[impersonateIndex + 1] == "chrome", "MůjRozhlas automaticky obejde ochranu proti jednoduchým robotům");
+
             args.Clear();
             DownloadArgumentBuilder.AddFormat(args, "audio-mp3", "auto", true);
             True(args.Contains("ba/bestaudio/best"), "audio má fallback na kombinovaný stream");
@@ -202,7 +222,23 @@ namespace MVMediaStudio.Tests
             True(safe.IndexOf("AIza", StringComparison.Ordinal) < 0, "report skryje API klíč");
             True(safe.IndexOf("id=123", StringComparison.Ordinal) < 0, "report skryje parametry URL");
             True(safe.IndexOf("webshare-tajne", StringComparison.Ordinal) < 0, "report skryje Webshare relaci");
-            True(DiagnosticReportService.BuildEmailUrl("Test", safe).StartsWith("mailto:?", StringComparison.Ordinal), "e-mailové hlášení otevře poštovní aplikaci");
+            string temp = Path.Combine(Path.GetTempPath(), "mv-media-report-test-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(temp);
+            try
+            {
+                string report = DiagnosticReportService.Build("Test", "Authorization: Bearer tajne", new ToolState());
+                string saved = DiagnosticReportService.Save(Path.Combine(temp, "hlaseni.log"), report);
+                byte[] bytes = File.ReadAllBytes(saved);
+                True(saved.EndsWith(".txt", StringComparison.OrdinalIgnoreCase) && File.Exists(saved), "report se uloží jako .txt");
+                True(report.IndexOf("tajne", StringComparison.OrdinalIgnoreCase) < 0, "uložený report zůstane očištěný");
+                True(bytes.Length < 3 || bytes[0] != 0xEF || bytes[1] != 0xBB || bytes[2] != 0xBF, "report používá UTF-8 bez BOM");
+                True(DiagnosticReportService.BuildEmailUrl("Test", saved).StartsWith("mailto:?", StringComparison.Ordinal), "e-mailové hlášení otevře poštovní aplikaci");
+                True(DiagnosticReportService.BuildIssueUrl("Test", saved).StartsWith("https://github.com/", StringComparison.Ordinal), "GitHub hlášení otevře nový issue");
+            }
+            finally
+            {
+                try { Directory.Delete(temp, true); } catch { }
+            }
         }
 
         private static void TestDownloadProviders()
@@ -219,6 +255,27 @@ namespace MVMediaStudio.Tests
 
             DownloadRoute youtube = DownloadSourceRouter.Classify("https://www.youtube.com/watch?v=abc");
             Equal(DownloadProviderKind.YtDlp.ToString(), youtube.Kind.ToString(), "běžné video zůstává v yt-dlp");
+            Equal("YouTube", youtube.Provider, "YouTube se v rozhraní pojmenuje");
+            Equal("Česká televize", DownloadSourceRouter.Classify("https://www.ceskatelevize.cz/porady/test").Provider, "Česká televize se rozpozná");
+            Equal("Prima", DownloadSourceRouter.Classify("https://cnn.iprima.cz/video/test").Provider, "Prima se rozpozná");
+            Equal("TV Nova", DownloadSourceRouter.Classify("https://tv.nova.cz/porad/test").Provider, "TV Nova se rozpozná");
+            Equal("JOJ", DownloadSourceRouter.Classify("https://play.joj.sk/player/test").Provider, "JOJ se rozpozná");
+            Equal("SoundCloud", DownloadSourceRouter.Classify("https://soundcloud.com/autor/skladba").Provider, "SoundCloud se rozpozná");
+            Equal("Stream.cz", DownloadSourceRouter.Classify("https://www.stream.cz/porad/video").Provider, "Stream.cz se rozpozná");
+            Equal("Televize Seznam", DownloadSourceRouter.Classify("https://www.televizeseznam.cz/video/porad/test").Provider, "Televize Seznam se rozpozná");
+            Equal("Seznam Zprávy", DownloadSourceRouter.Classify("https://www.seznamzpravy.cz/clanek/video-test").Provider, "Seznam Zprávy se rozpoznají");
+            Equal("Český rozhlas", DownloadSourceRouter.Classify("https://prehravac.rozhlas.cz/audio/3421320").Provider, "Český rozhlas se rozpozná");
+            Equal("MůjRozhlas", DownloadSourceRouter.Classify("https://www.mujrozhlas.cz/porad/epizoda").Provider, "MůjRozhlas se rozpozná");
+            Equal("TV Noe", DownloadSourceRouter.Classify("https://www.tvnoe.cz/porad/43216-test").Provider, "TV Noe se rozpozná");
+            Equal("DVTV / Aktuálně", DownloadSourceRouter.Classify("https://video.aktualne.cz/dvtv/porad/r~abc/").Provider, "DVTV se rozpozná");
+            DownloadRoute playtvak = DownloadSourceRouter.Classify("https://zpravy.idnes.cz/video.aspx?c=test");
+            Equal("iDNES / Playtvak", playtvak.Provider, "iDNES video se rozpozná");
+            True(!string.IsNullOrWhiteSpace(playtvak.Message), "iDNES upozorní na stav extraktoru");
+            DownloadRoute oneplay = DownloadSourceRouter.Classify("https://www.oneplay.cz/film/test");
+            Equal(DownloadProviderKind.Unsupported.ToString(), oneplay.Kind.ToString(), "Oneplay DRM obsah se neoznačuje jako běžné stažení");
+            Equal("Kick", DownloadSourceRouter.Classify("https://kick.com/kanal").Provider, "Kick se rozpozná");
+            Equal("Mixcloud", DownloadSourceRouter.Classify("https://www.mixcloud.com/autor/porad").Provider, "Mixcloud se rozpozná");
+            Equal("Další web", DownloadSourceRouter.Classify("https://example.com/watch/123").Provider, "neznámý web zůstane na obecném yt-dlp konektoru");
 
             string firstHash = WebsharePasswordHash.Create("heslo", "test1234");
             string secondHash = WebsharePasswordHash.Create("heslo", "test1234");
@@ -300,15 +357,15 @@ namespace MVMediaStudio.Tests
         {
             string hash = new string('a', 64);
             string json = "{" +
-                "\"tag_name\":\"v3.1.1\"," +
-                "\"html_url\":\"https://github.com/mv/MV-Media-Downloader/releases/tag/v3.1.1\"," +
+                "\"tag_name\":\"v3.1.2\"," +
+                "\"html_url\":\"https://github.com/mv/MV-Media-Downloader/releases/tag/v3.1.2\"," +
                 "\"draft\":false,\"prerelease\":false," +
                 "\"assets\":[" +
                 "{\"name\":\"MV-Media-Downloader-win-x64.zip\",\"browser_download_url\":\"https://github.com/mv/app.zip\",\"digest\":\"sha256:" + hash + "\"}," +
                 "{\"name\":\"MV-Media-Downloader-win-x64.zip.sha256\",\"browser_download_url\":\"https://github.com/mv/app.sha256\"}]}";
 
             UpdateReleaseInfo release = UpdateMetadata.ParseRelease(json);
-            Equal("3.1.1", release.Version.ToString(3), "verze aktualizace z GitHub Release");
+            Equal("3.1.2", release.Version.ToString(3), "verze aktualizace z GitHub Release");
             Equal(hash, release.Sha256, "SHA-256 z GitHub metadat");
             Equal(hash, UpdateMetadata.ParseChecksum(hash.ToUpperInvariant() + "  MV-Media-Downloader-win-x64.zip\r\n"), "SHA-256 ze souboru");
             Equal("", UpdateMetadata.ParseChecksum("neplatny soucet"), "neplatný SHA-256 se odmítne");

@@ -10,9 +10,8 @@ namespace MVMediaStudio.Services
     {
         private const string IssueBaseUrl = "https://github.com/Splicee/MV-Media-Downloader/issues/new";
 
-        public static string Create(string area, string log, ToolState tools)
+        public static string Build(string area, string log, ToolState tools)
         {
-            AppPaths.EnsureDirectories();
             StringBuilder report = new StringBuilder();
             report.AppendLine("MV Media Downloader - diagnosticky report");
             report.AppendLine("Cas: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss zzz"));
@@ -33,28 +32,63 @@ namespace MVMediaStudio.Services
                 report.AppendLine(errors);
             }
 
-            string safe = DiagnosticRedactor.Redact(report.ToString());
-            string fileName = "report-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt";
-            string path = Path.Combine(AppPaths.ReportDirectory, fileName);
-            File.WriteAllText(path, safe, new UTF8Encoding(false));
-            return path;
+            return DiagnosticRedactor.Redact(report.ToString());
         }
 
-        public static string BuildIssueUrl(string area, string report)
+        public static string Save(string path, string report)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Nebyla vybrána cesta pro diagnostický report.", "path");
+            string normalized = string.Equals(Path.GetExtension(path), ".txt", StringComparison.OrdinalIgnoreCase) ?
+                path :
+                Path.ChangeExtension(path, ".txt");
+            string directory = Path.GetDirectoryName(Path.GetFullPath(normalized));
+            if (string.IsNullOrWhiteSpace(directory))
+                throw new InvalidOperationException("Cílovou složku reportu nelze určit.");
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(normalized, report ?? "", new UTF8Encoding(false));
+            return normalized;
+        }
+
+        public static string Create(string area, string log, ToolState tools)
+        {
+            AppPaths.EnsureDirectories();
+            string path = Path.Combine(AppPaths.ReportDirectory, SuggestedFileName(area));
+            return Save(path, Build(area, log, tools));
+        }
+
+        public static string SuggestedFileName(string area)
+        {
+            string part = string.IsNullOrWhiteSpace(area) ? "aplikace" : area.Trim().ToLowerInvariant();
+            foreach (char invalid in Path.GetInvalidFileNameChars())
+                part = part.Replace(invalid, '-');
+            string fileName = "mv-media-report-" + part + "-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt";
+            return fileName;
+        }
+
+        public static string BuildIssueUrl(string area, string fileName)
         {
             string title = "Chyba v aplikaci - " + area;
-            string body = "Automaticky pripraveny ocisteny diagnosticky souhrn.\r\n\r\n" + Tail(report, 1700) +
-                "\r\n\r\nKompletni report je zkopirovany ve schrance a lze jej vlozit do komentare.";
+            string body = "Popište prosím, co se stalo a jak lze chybu zopakovat.\r\n\r\n" +
+                "Potom do tohoto hlášení přetáhněte uložený diagnostický soubor `" +
+                Path.GetFileName(fileName ?? "diagnosticky-report.txt") + "`.";
             return IssueBaseUrl + "?title=" + Uri.EscapeDataString(title) + "&body=" + Uri.EscapeDataString(body);
         }
 
-        public static string BuildEmailUrl(string area, string report)
+        public static string BuildEmailUrl(string area, string fileName)
         {
             string subject = "MV Media Downloader - chyba - " + area;
-            string body = "Dobry den,\r\n\r\nposilam ocisteny diagnosticky souhrn aplikace.\r\n\r\n" +
-                Tail(report, 1400) +
-                "\r\n\r\nKompletni report je zkopirovany ve schrance a lze jej vlozit do zpravy.";
+            string body = "Dobrý den,\r\n\r\npopisuji chybu v aplikaci MV Media Downloader.\r\n\r\n" +
+                "K této zprávě přikládám uložený diagnostický soubor " +
+                Path.GetFileName(fileName ?? "diagnosticky-report.txt") + ".\r\n\r\n" +
+                "Popis chyby:\r\n";
             return "mailto:?subject=" + Uri.EscapeDataString(subject) + "&body=" + Uri.EscapeDataString(body);
+        }
+
+        public static string Create(string area, string log, ToolState tools, string path)
+        {
+            string savedPath = Save(path, Build(area, log, tools));
+            return savedPath;
         }
 
         private static string Value(string value)

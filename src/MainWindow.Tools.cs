@@ -14,10 +14,15 @@ namespace MVMediaStudio
     {
         private ContextMenu BuildRepairMenu()
         {
-            ContextMenu menu = new ContextMenu { MinWidth = 245 };
+            ContextMenu menu = new ContextMenu { MinWidth = 285 };
             MenuItem check = new MenuItem { Header = "Zkontrolovat nástroje" };
             check.Click += async delegate { await RefreshToolsAsync(true); };
             menu.Items.Add(check);
+
+            MenuItem sources = new MenuItem { Header = "Podporované weby" };
+            sources.Click += delegate { new SourceSupportDialog(this).ShowDialog(); };
+            menu.Items.Add(sources);
+            menu.Items.Add(new Separator());
 
             MenuItem ytDlp = new MenuItem { Header = "Stáhnout / aktualizovat yt-dlp" };
             ytDlp.Click += async delegate { await InstallToolAsync("yt-dlp", toolService.InstallYtDlpAsync); };

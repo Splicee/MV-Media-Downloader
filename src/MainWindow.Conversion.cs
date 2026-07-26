@@ -42,14 +42,27 @@ namespace MVMediaStudio
         private ProgressBar conversionOverallProgress;
         private TextBlock conversionStatusTitle;
         private TextBlock conversionStatusDetail;
+        private StackPanel conversionContent;
+        private FrameworkElement conversionCodecField;
+        private FrameworkElement conversionCodecNoticePanel;
 
         private Grid BuildConversionPage()
         {
             Grid page = new Grid();
-            ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+            ScrollViewer scroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch
+            };
             ConfigurePageScroll(scroll);
-            StackPanel content = new StackPanel { Margin = new Thickness(32, 28, 32, 34), MaxWidth = 1160, HorizontalAlignment = HorizontalAlignment.Center };
-            scroll.Content = content;
+            conversionContent = new StackPanel
+            {
+                Margin = new Thickness(32, 28, 32, 34),
+                MaxWidth = 1560,
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+            scroll.Content = conversionContent;
             page.Children.Add(scroll);
 
             Grid header = new Grid { Margin = new Thickness(0, 0, 0, 20) };
@@ -66,7 +79,7 @@ namespace MVMediaStudio
             recommended.Click += delegate { ResetConversionChoices(); };
             Grid.SetColumn(recommended, 1);
             header.Children.Add(recommended);
-            content.Children.Add(header);
+            conversionContent.Children.Add(header);
 
             StackPanel filesPanel = new StackPanel();
             Grid filesHeader = new Grid { Margin = new Thickness(0, 0, 0, 12) };
@@ -96,9 +109,11 @@ namespace MVMediaStudio
                 SelectionUnit = DataGridSelectionUnit.FullRow,
                 RowHeight = 46,
                 MinHeight = 230,
-                MaxHeight = 300,
+                MaxHeight = 520,
                 BorderThickness = new Thickness(1),
-                IsReadOnly = true
+                IsReadOnly = true,
+                EnableRowVirtualization = true,
+                EnableColumnVirtualization = true
             };
             conversionGrid.AlternationCount = 2;
             Theme.Bind(conversionGrid, Control.BackgroundProperty, Theme.Input);
@@ -141,14 +156,18 @@ namespace MVMediaStudio
             fileActions.Children.Add(conversionRemoveButton);
             fileActions.Children.Add(conversionClearButton);
             filesPanel.Children.Add(fileActions);
-            content.Children.Add(Card(filesPanel));
+            conversionContent.Children.Add(Card(filesPanel));
 
             StackPanel outputPanel = new StackPanel();
             outputPanel.Children.Add(Heading("Výstup", 17));
-            Grid outputChoices = new Grid { Margin = new Thickness(0, 16, 0, 0) };
-            outputChoices.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            outputChoices.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) });
-            outputChoices.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2.4, GridUnitType.Star) });
+            AdaptiveGrid outputChoices = new AdaptiveGrid
+            {
+                Margin = new Thickness(0, 16, 0, 0),
+                ItemMinWidth = 285,
+                MaximumColumns = 3,
+                ColumnSpacing = 12,
+                RowSpacing = 14
+            };
 
             conversionFormatCombo = Combo(
                 new ComboItem("mp4", "MP4 · nejběžnější"),
@@ -167,8 +186,7 @@ namespace MVMediaStudio
             SelectCombo(conversionCodecCombo, settings.ConversionCodec);
             conversionCodecCombo.SelectionChanged += delegate { EnsureCompatibleConversionChoice(); };
             Border codec = Labeled("Video kodek", conversionCodecCombo);
-            codec.Margin = new Thickness(12, 0, 0, 0);
-            Grid.SetColumn(codec, 1);
+            conversionCodecField = codec;
             outputChoices.Children.Add(codec);
 
             Grid folderGrid = new Grid();
@@ -188,38 +206,39 @@ namespace MVMediaStudio
             Grid.SetColumn(openFolder, 2);
             folderGrid.Children.Add(openFolder);
             Border folder = Labeled("Cílová složka", folderGrid);
-            folder.Margin = new Thickness(12, 0, 0, 0);
-            Grid.SetColumn(folder, 2);
             outputChoices.Children.Add(folder);
             outputPanel.Children.Add(outputChoices);
 
-            Grid codecNotice = new Grid { Margin = new Thickness(0, 18, 0, 0) };
-            codecNotice.ColumnDefinitions.Add(new ColumnDefinition());
-            codecNotice.ColumnDefinitions.Add(new ColumnDefinition());
-            codecNotice.ColumnDefinitions.Add(new ColumnDefinition());
+            AdaptiveGrid codecNotice = new AdaptiveGrid
+            {
+                Margin = new Thickness(0, 18, 0, 0),
+                ItemMinWidth = 245,
+                MaximumColumns = 3,
+                ColumnSpacing = 8,
+                RowSpacing = 8
+            };
             codecNotice.Children.Add(CodecNotice("H.264", "Nejkompatibilnější s většinou zařízení.", Theme.Success));
             Border h265 = CodecNotice("H.265", "Některé starší televize ho nepřehrají.", Theme.Warning);
-            h265.Margin = new Thickness(8, 0, 0, 0);
-            Grid.SetColumn(h265, 1);
             codecNotice.Children.Add(h265);
             Border av1 = CodecNotice("AV1", "Na velké části starších zařízení nepůjde.", Theme.Danger);
-            av1.Margin = new Thickness(8, 0, 0, 0);
-            Grid.SetColumn(av1, 2);
             codecNotice.Children.Add(av1);
             outputPanel.Children.Add(codecNotice);
+            conversionCodecNoticePanel = codecNotice;
 
             Border outputCard = Card(outputPanel);
             outputCard.Margin = new Thickness(0, 14, 0, 0);
-            content.Children.Add(outputCard);
+            conversionContent.Children.Add(outputCard);
 
             StackPanel advancedPanel = new StackPanel();
             advancedPanel.Children.Add(Heading("Pokročilé řízení kvality", 15));
-            Grid advancedChoices = new Grid { Margin = new Thickness(0, 14, 0, 0) };
-            advancedChoices.ColumnDefinitions.Add(new ColumnDefinition());
-            advancedChoices.ColumnDefinitions.Add(new ColumnDefinition());
-            advancedChoices.ColumnDefinitions.Add(new ColumnDefinition());
-            advancedChoices.ColumnDefinitions.Add(new ColumnDefinition());
-            advancedChoices.ColumnDefinitions.Add(new ColumnDefinition());
+            AdaptiveGrid advancedChoices = new AdaptiveGrid
+            {
+                Margin = new Thickness(0, 14, 0, 0),
+                ItemMinWidth = 190,
+                MaximumColumns = 5,
+                ColumnSpacing = 10,
+                RowSpacing = 12
+            };
             conversionRateCombo = Combo(new ComboItem("crf", "CRF · stálá kvalita"), new ComboItem("bitrate", "Pevný bitrate"));
             conversionRateCombo.SelectedIndex = 0;
             conversionRateCombo.SelectionChanged += delegate { UpdateRateControlVisibility(); };
@@ -227,14 +246,10 @@ namespace MVMediaStudio
             conversionCrfCombo = Combo(new ComboItem("18", "18 · vysoká"), new ComboItem("20", "20 · velmi dobrá"), new ComboItem("23", "23 · doporučená"), new ComboItem("28", "28 · menší soubor"));
             SelectCombo(conversionCrfCombo, "23");
             Border crf = Labeled("CRF", conversionCrfCombo);
-            crf.Margin = new Thickness(10, 0, 0, 0);
-            Grid.SetColumn(crf, 1);
             advancedChoices.Children.Add(crf);
             conversionVideoBitrateCombo = Combo(new ComboItem("2500k", "2,5 Mb/s"), new ComboItem("4000k", "4 Mb/s"), new ComboItem("6000k", "6 Mb/s"), new ComboItem("8000k", "8 Mb/s"), new ComboItem("12000k", "12 Mb/s"), new ComboItem("20000k", "20 Mb/s"));
             SelectCombo(conversionVideoBitrateCombo, "6000k");
             Border videoRate = Labeled("Video bitrate", conversionVideoBitrateCombo);
-            videoRate.Margin = new Thickness(10, 0, 0, 0);
-            Grid.SetColumn(videoRate, 2);
             advancedChoices.Children.Add(videoRate);
             conversionAudioBitrateCombo = Combo(new ComboItem("128k", "128 kb/s"), new ComboItem("192k", "192 kb/s"), new ComboItem("256k", "256 kb/s"), new ComboItem("320k", "320 kb/s"));
             SelectCombo(conversionAudioBitrateCombo, "192k");
@@ -246,18 +261,14 @@ namespace MVMediaStudio
             SelectCombo(conversionAudioCodecCombo, settings.ConversionAudioCodec);
             conversionAudioCodecCombo.SelectionChanged += delegate { EnsureCompatibleConversionChoice(); UpdateRateControlVisibility(); };
             Border audioCodec = Labeled("Zvuk kodek", conversionAudioCodecCombo);
-            audioCodec.Margin = new Thickness(10, 0, 0, 0);
-            Grid.SetColumn(audioCodec, 3);
             advancedChoices.Children.Add(audioCodec);
             Border audioRate = Labeled("Zvuk bitrate", conversionAudioBitrateCombo);
-            audioRate.Margin = new Thickness(10, 0, 0, 0);
-            Grid.SetColumn(audioRate, 4);
             advancedChoices.Children.Add(audioRate);
             advancedPanel.Children.Add(advancedChoices);
             Border advancedCard = Card(advancedPanel);
             advancedCard.Margin = new Thickness(0, 14, 0, 0);
             conversionAdvancedPanel = advancedCard;
-            content.Children.Add(advancedCard);
+            conversionContent.Children.Add(advancedCard);
             UpdateRateControlVisibility();
 
             Grid actions = new Grid { Margin = new Thickness(0, 18, 0, 0) };
@@ -275,17 +286,17 @@ namespace MVMediaStudio
             conversionCancelButton.Click += delegate { CancelActiveWork(); };
             Grid.SetColumn(conversionCancelButton, 1);
             actions.Children.Add(conversionCancelButton);
-            conversionReportButton = CreateActionButton("\uE8BD", "Nahlásit chybu ▾");
+            conversionReportButton = CreateActionButton("\uE8BD", "Nahlásit chybu");
             conversionReportButton.Margin = new Thickness(0, 0, 8, 0);
             conversionReportButton.Visibility = Visibility.Collapsed;
-            conversionReportButton.Click += delegate { ShowReportOptions(conversionReportButton, "Konverze", conversionLog.ToString()); };
+            conversionReportButton.Click += delegate { SaveProblemReport("Konverze", conversionLog.ToString()); };
             Grid.SetColumn(conversionReportButton, 3);
             actions.Children.Add(conversionReportButton);
             conversionLogToggle = CreateActionButton("\uE756", "Zobrazit log");
             conversionLogToggle.Click += delegate { ToggleConversionLog(); };
             Grid.SetColumn(conversionLogToggle, 4);
             actions.Children.Add(conversionLogToggle);
-            content.Children.Add(actions);
+            conversionContent.Children.Add(actions);
 
             Grid progressPanel = new Grid();
             progressPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -302,7 +313,7 @@ namespace MVMediaStudio
             progressPanel.Children.Add(conversionOverallProgress);
             Border progressCard = Card(progressPanel);
             progressCard.Margin = new Thickness(0, 14, 0, 0);
-            content.Children.Add(progressCard);
+            conversionContent.Children.Add(progressCard);
 
             conversionLogBox = new TextBox { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, MinHeight = 180, MaxHeight = 260, FontFamily = new FontFamily("Consolas"), FontSize = 11.5 };
             Theme.Bind(conversionLogBox, Control.BackgroundProperty, Theme.Console);
@@ -310,7 +321,7 @@ namespace MVMediaStudio
             conversionLogCard = Card(conversionLogBox);
             conversionLogCard.Margin = new Thickness(0, 14, 0, 0);
             conversionLogCard.Visibility = Visibility.Collapsed;
-            content.Children.Add(conversionLogCard);
+            conversionContent.Children.Add(conversionLogCard);
 
             UpdateConversionQueue();
             EnsureCompatibleConversionChoice();
@@ -400,7 +411,7 @@ namespace MVMediaStudio
             {
                 Multiselect = true,
                 Title = "Vyber soubory ke konverzi",
-                Filter = "Video a audio|*.mp4;*.mkv;*.avi;*.mov;*.webm;*.m4v;*.ts;*.mts;*.wmv;*.flv;*.mp3;*.m4a;*.wav;*.flac;*.opus|Všechny soubory|*.*"
+                Filter = MediaFileSupport.VideoDialogFilter
             };
             if (dialog.ShowDialog(this) == true)
                 await AddConversionFilesAsync(dialog.FileNames);
@@ -409,17 +420,33 @@ namespace MVMediaStudio
         private async Task AddConversionFilesAsync(IEnumerable<string> paths)
         {
             List<ConversionJob> added = new List<ConversionJob>();
-            foreach (string path in paths)
+            int unsupportedCount = 0;
+            foreach (string path in paths ?? Enumerable.Empty<string>())
             {
                 if (conversionJobs.Count >= 20)
                     break;
-                if (!File.Exists(path) || conversionJobs.Any(job => string.Equals(job.SourcePath, path, StringComparison.OrdinalIgnoreCase)))
+                if (!File.Exists(path))
+                    continue;
+                if (!MediaFileSupport.IsSupportedVideo(path))
+                {
+                    unsupportedCount++;
+                    continue;
+                }
+                if (conversionJobs.Any(job => string.Equals(job.SourcePath, path, StringComparison.OrdinalIgnoreCase)))
                     continue;
                 ConversionJob item = new ConversionJob(path);
                 conversionJobs.Add(item);
                 added.Add(item);
             }
             UpdateConversionQueue();
+
+            if (!busy && unsupportedCount > 0)
+            {
+                conversionStatusTitle.Text = added.Count > 0 ? "Videa byla přidána" : "Soubor nelze přidat";
+                conversionStatusDetail.Text = unsupportedCount == 1
+                    ? "Konverze nyní přijímá běžné video soubory, nikoli samostatný zvuk."
+                    : unsupportedCount + " souborů bylo přeskočeno, protože nejde o podporovaná videa.";
+            }
 
             if (added.Count == 0)
                 return;
@@ -551,6 +578,7 @@ namespace MVMediaStudio
                 {
                     item.Progress = 100;
                     item.Status = "Hotovo";
+                    AppendConversionLog("[Hotovo] " + item.FileName);
                 }
                 else if (exitCode == -2)
                 {
@@ -561,6 +589,7 @@ namespace MVMediaStudio
                 {
                     item.Status = "Chyba";
                     errors++;
+                    AppendConversionLog("[Chyba] " + item.FileName);
                 }
                 conversionOverallProgress.Value = ((index + 1d) / conversionJobs.Count) * 100d;
             }
@@ -593,7 +622,8 @@ namespace MVMediaStudio
         {
             Dispatcher.BeginInvoke(new Action(delegate
             {
-                AppendConversionLog((isError ? "! " : "") + line);
+                if (!IsConversionProgressLine(line))
+                    AppendConversionLog((isError ? "! " : "") + line);
                 if (line.StartsWith("out_time_ms=", StringComparison.OrdinalIgnoreCase) || line.StartsWith("out_time_us=", StringComparison.OrdinalIgnoreCase))
                 {
                     int split = line.IndexOf('=');
@@ -606,6 +636,22 @@ namespace MVMediaStudio
                     }
                 }
             }));
+        }
+
+        private static bool IsConversionProgressLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                return true;
+            int split = line.IndexOf('=');
+            if (split <= 0)
+                return false;
+            for (int index = 0; index < split; index++)
+            {
+                char value = line[index];
+                if (!(char.IsLetterOrDigit(value) || value == '_'))
+                    return false;
+            }
+            return true;
         }
 
         private ConversionOptions CurrentConversionOptions(string inputPath)
@@ -706,8 +752,14 @@ namespace MVMediaStudio
             }
             conversionLog.AppendLine(line);
             if (conversionLog.Length > 180000)
+            {
                 conversionLog.Remove(0, conversionLog.Length - 150000);
-            conversionLogBox.Text = conversionLog.ToString();
+                conversionLogBox.Text = conversionLog.ToString();
+            }
+            else
+            {
+                conversionLogBox.AppendText(line + Environment.NewLine);
+            }
             conversionLogBox.ScrollToEnd();
         }
 
@@ -738,6 +790,19 @@ namespace MVMediaStudio
             conversionCancelButton.IsEnabled = busy && activeOperation == "conversion";
             conversionRemoveButton.IsEnabled = !busy && conversionGrid.SelectedItem != null;
             conversionClearButton.IsEnabled = !busy && conversionJobs.Count > 0;
+        }
+
+        private void UpdateConversionResponsiveLayout(double windowWidth, double windowHeight)
+        {
+            if (conversionContent == null)
+                return;
+
+            double horizontalMargin = windowWidth >= 1700 ? 44 : windowWidth >= 1200 ? 32 : 20;
+            conversionContent.Margin = new Thickness(horizontalMargin, 26, horizontalMargin, 34);
+            if (conversionGrid != null)
+                conversionGrid.MaxHeight = Math.Max(300, Math.Min(520, windowHeight * 0.39));
+            if (conversionLogBox != null)
+                conversionLogBox.MaxHeight = Math.Max(260, Math.Min(400, windowHeight * 0.42));
         }
     }
 }

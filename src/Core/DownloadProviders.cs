@@ -88,6 +88,14 @@ namespace MVMediaStudio.Core
                 return route;
             }
 
+            if (host == "oneplay.cz" || host.EndsWith(".oneplay.cz", StringComparison.Ordinal))
+            {
+                route.Kind = DownloadProviderKind.Unsupported;
+                route.Provider = "Oneplay";
+                route.Message = "Předplacený obsah Oneplay je chráněný a aplikace jej nestahuje.";
+                return route;
+            }
+
             string extension = Path.GetExtension(uri.AbsolutePath);
             if (DirectExtensions.Contains(extension) ||
                 host.EndsWith(".premiumcdn.net", StringComparison.Ordinal) ||
@@ -96,7 +104,96 @@ namespace MVMediaStudio.Core
                 route.Kind = DownloadProviderKind.Direct;
                 route.Provider = "Přímé stažení";
             }
+            else
+            {
+                route.Provider = ProviderForHost(host);
+                route.Message = GuidanceForHost(host);
+            }
             return route;
+        }
+
+        public static string ProviderForHost(string host)
+        {
+            string value = (host ?? "").Trim().TrimStart('.').ToLowerInvariant();
+            if (Matches(value, "youtube.com") || Matches(value, "youtu.be") || Matches(value, "youtube-nocookie.com"))
+                return "YouTube";
+            if (Matches(value, "ceskatelevize.cz"))
+                return "Česká televize";
+            if (Matches(value, "iprima.cz"))
+                return "Prima";
+            if (Matches(value, "nova.cz"))
+                return "TV Nova";
+            if (Matches(value, "joj.sk"))
+                return "JOJ";
+            if (Matches(value, "stream.cz"))
+                return "Stream.cz";
+            if (Matches(value, "televizeseznam.cz"))
+                return "Televize Seznam";
+            if (Matches(value, "seznamzpravy.cz"))
+                return "Seznam Zprávy";
+            if (Matches(value, "mujrozhlas.cz"))
+                return "MůjRozhlas";
+            if (Matches(value, "rozhlas.cz"))
+                return "Český rozhlas";
+            if (Matches(value, "tvnoe.cz"))
+                return "TV Noe";
+            if (Matches(value, "aktualne.cz") || Matches(value, "dvtv.cz"))
+                return "DVTV / Aktuálně";
+            if (Matches(value, "playtvak.cz") || Matches(value, "idnes.cz") ||
+                Matches(value, "lidovky.cz") || Matches(value, "metro.cz"))
+                return "iDNES / Playtvak";
+            if (Matches(value, "vimeo.com"))
+                return "Vimeo";
+            if (Matches(value, "dailymotion.com") || Matches(value, "dai.ly"))
+                return "Dailymotion";
+            if (Matches(value, "twitch.tv"))
+                return "Twitch";
+            if (Matches(value, "kick.com"))
+                return "Kick";
+            if (Matches(value, "tiktok.com"))
+                return "TikTok";
+            if (Matches(value, "instagram.com"))
+                return "Instagram";
+            if (Matches(value, "facebook.com") || Matches(value, "fb.watch"))
+                return "Facebook";
+            if (Matches(value, "x.com") || Matches(value, "twitter.com"))
+                return "X";
+            if (Matches(value, "soundcloud.com"))
+                return "SoundCloud";
+            if (Matches(value, "bandcamp.com"))
+                return "Bandcamp";
+            if (Matches(value, "mixcloud.com"))
+                return "Mixcloud";
+            if (Matches(value, "podcasts.apple.com"))
+                return "Apple Podcasts";
+            if (Matches(value, "reddit.com") || Matches(value, "redd.it"))
+                return "Reddit";
+            if (Matches(value, "rumble.com"))
+                return "Rumble";
+            if (Matches(value, "streamable.com"))
+                return "Streamable";
+            return "Další web";
+        }
+
+        public static string GuidanceForHost(string host)
+        {
+            string value = (host ?? "").Trim().TrimStart('.').ToLowerInvariant();
+            if (Matches(value, "ceskatelevize.cz"))
+                return "ČT občas mění přehrávač. Při chybě HTTP 410 nejprve aktualizuj yt-dlp; DRM obsah stáhnout nelze.";
+            if (Matches(value, "cnn.iprima.cz"))
+                return "CNN Prima mění přehrávač. Při chybě extraktoru nejprve aktualizuj yt-dlp.";
+            if (Matches(value, "iprima.cz"))
+                return "Prima+ vyžaduje účet přímo pro yt-dlp; samotné cookies z prohlížeče nemusí stačit.";
+            if (Matches(value, "nova.cz"))
+                return "Veřejná videa TV Nova fungují; placený nebo DRM obsah stáhnout nelze.";
+            if (Matches(value, "joj.sk"))
+                return "U části obsahu JOJ Play je nutné přihlášení přes tlačítko Přihlásit JOJ Play.";
+            if (Matches(value, "seznamzpravy.cz"))
+                return "Při přesměrování na souhlas zapni Přihlášení z prohlížeče.";
+            if (Matches(value, "playtvak.cz") || Matches(value, "idnes.cz") ||
+                Matches(value, "lidovky.cz") || Matches(value, "metro.cz"))
+                return "Extraktor iDNES / Playtvak je v aktuálním yt-dlp označený jako dočasně nefunkční.";
+            return "";
         }
 
         public static string ExtractWebshareIdent(string url)
@@ -116,6 +213,12 @@ namespace MVMediaStudio.Core
                 return "download.bin";
             string name = Uri.UnescapeDataString(Path.GetFileName(uri.AbsolutePath));
             return string.IsNullOrWhiteSpace(name) ? "download.bin" : name;
+        }
+
+        private static bool Matches(string host, string domain)
+        {
+            return string.Equals(host, domain, StringComparison.Ordinal) ||
+                host.EndsWith("." + domain, StringComparison.Ordinal);
         }
     }
 }

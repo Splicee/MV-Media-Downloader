@@ -77,6 +77,12 @@ namespace MVMediaStudio.Core
             args.Add("--print");
             args.Add("after_move:MV_DONE:%(filepath)s");
 
+            if (NeedsBrowserImpersonation(urls))
+            {
+                args.Add("--impersonate");
+                args.Add("chrome");
+            }
+
             AddFormat(args, options.Preset, options.Quality, tools != null && tools.HasFfmpeg);
 
             string rateLimit = NormalizeRateLimit(options.RateLimit);
@@ -125,6 +131,22 @@ namespace MVMediaStudio.Core
             foreach (string url in urls)
                 args.Add(url);
             return args;
+        }
+
+        internal static bool NeedsBrowserImpersonation(IEnumerable<string> urls)
+        {
+            if (urls == null)
+                return false;
+            foreach (string url in urls)
+            {
+                Uri uri;
+                if (!Uri.TryCreate(url, UriKind.Absolute, out uri))
+                    continue;
+                string host = uri.Host.TrimStart('.').ToLowerInvariant();
+                if (host == "mujrozhlas.cz" || host.EndsWith(".mujrozhlas.cz", StringComparison.Ordinal))
+                    return true;
+            }
+            return false;
         }
 
         public static void AddFormat(List<string> args, string preset, string quality, bool hasFfmpeg)

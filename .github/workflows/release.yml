@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Aktuální yt-dlp
         shell: powershell
-        run: Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "tools/yt-dlp.exe"
+        run: ./tools/update-ytdlp.ps1
       - name: Testy
         shell: cmd
         run: test.cmd

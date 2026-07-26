@@ -1,6 +1,6 @@
 # Vydání MV Media Downloader
 
-1. Zvyš `AssemblyVersion` a `AssemblyFileVersion` v `src\App.cs`.
+1. Zvyš verzi v `src/Core/AppInfo.cs`, `src/app.manifest` a `updater/Updater.cs`.
 2. Spusť `test.cmd`.
 3. Spusť `package.cmd` a zkontroluj ZIP i SHA-256.
 4. Ověř čisté spuštění, stahování, konverzi a ruční kontrolu aktualizací.

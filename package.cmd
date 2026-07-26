@@ -5,8 +5,23 @@ set "ROOT=%~dp0"
 set "PACKAGE=%ROOT%release\MV-Media-Downloader-win-x64.zip"
 set "CHECKSUM=%PACKAGE%.sha256"
 
+set "YTDLP_READY="
+if exist "%ROOT%tools\yt-dlp.exe" (
+  "%ROOT%tools\yt-dlp.exe" --version >nul 2>&1
+  if not errorlevel 1 set "YTDLP_READY=1"
+)
+if not defined YTDLP_READY (
+  echo Stahuji a overuji aktualni yt-dlp...
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\update-ytdlp.ps1"
+  if errorlevel 1 exit /b 1
+)
+
 call "%ROOT%build.cmd"
 if errorlevel 1 exit /b 1
+if not exist "%ROOT%dist\yt-dlp.exe" (
+  echo CHYBA: V sestaveni chybi yt-dlp.exe.
+  exit /b 1
+)
 if not exist "%ROOT%release" mkdir "%ROOT%release"
 if exist "%PACKAGE%" del /Q "%PACKAGE%"
 if exist "%CHECKSUM%" del /Q "%CHECKSUM%"

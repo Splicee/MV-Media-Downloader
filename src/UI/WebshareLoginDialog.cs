@@ -27,6 +27,7 @@ namespace MVMediaStudio.UI
             Resources[typeof(Button)] = owner.FindResource(typeof(Button));
             Resources[typeof(TextBox)] = owner.FindResource(typeof(TextBox));
             Resources[typeof(CheckBox)] = owner.FindResource(typeof(CheckBox));
+            WindowAppearance.ApplyNativeTheme(this, Theme.IsDarkTheme(owner));
 
             Grid root = new Grid { Margin = new Thickness(26, 22, 26, 22) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });

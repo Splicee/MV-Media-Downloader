@@ -36,8 +36,13 @@ namespace MVMediaStudio
         private Button downloadNavButton;
         private Button conversionNavButton;
         private Button repairButton;
+        private Button maximizeWindowButton;
         private TextBlock footerStatus;
         private StackPanel toolStatusPanel;
+        private TextBlock brandSubtitle;
+        private StackPanel brandTextPanel;
+        private ColumnDefinition titleBrandColumn;
+        private ColumnDefinition titleNavigationColumn;
         private ContextMenu repairMenu;
         private MenuItem advancedMenuItem;
         private MenuItem themeMenuItem;
@@ -56,9 +61,9 @@ namespace MVMediaStudio
             conversionLog = new StringBuilder();
 
             Title = "MV Media Downloader";
-            Width = 1280;
-            Height = 820;
-            MinWidth = 1020;
+            Width = 1360;
+            Height = 860;
+            MinWidth = 920;
             MinHeight = 680;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             WindowStyle = WindowStyle.None;
@@ -90,8 +95,11 @@ namespace MVMediaStudio
             if (startWithConversion)
                 Navigate("conversion");
 
+            SizeChanged += delegate { UpdateResponsiveLayout(); };
+            StateChanged += delegate { UpdateMaximizeGlyph(); };
             Loaded += async delegate
             {
+                UpdateResponsiveLayout();
                 UpdateService.SignalHealthy(Environment.GetCommandLineArgs());
                 await RefreshToolsAsync(false);
                 string updatedVersion = UpdateService.ArgumentValue(Environment.GetCommandLineArgs(), "--updated");
@@ -139,7 +147,7 @@ namespace MVMediaStudio
             footerStatus = Text("Připraveno", 11.5, Theme.Muted);
             footerStatus.VerticalAlignment = VerticalAlignment.Center;
             footer.Children.Add(footerStatus);
-            TextBlock version = Text("MV Media Downloader 3.1.1", 11.5, Theme.Muted);
+            TextBlock version = Text("MV Media Downloader " + ProductVersion(), 11.5, Theme.Muted);
             version.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(version, 1);
             footer.Children.Add(version);
@@ -152,8 +160,10 @@ namespace MVMediaStudio
         private Grid BuildTitleBar()
         {
             Grid bar = new Grid { Background = Brush("#0D1217") };
-            bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(250) });
-            bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(310) });
+            titleBrandColumn = new ColumnDefinition { Width = new GridLength(270) };
+            titleNavigationColumn = new ColumnDefinition { Width = new GridLength(320) };
+            bar.ColumnDefinitions.Add(titleBrandColumn);
+            bar.ColumnDefinitions.Add(titleNavigationColumn);
             bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -163,10 +173,11 @@ namespace MVMediaStudio
             Border mark = new Border { Width = 34, Height = 34, CornerRadius = new CornerRadius(7), Background = Brush("#20A4F3") };
             mark.Child = new TextBlock { Text = "MV", Foreground = Brushes.White, FontSize = 13, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             brand.Children.Add(mark);
-            StackPanel brandText = new StackPanel { Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-            brandText.Children.Add(new TextBlock { Text = "MV Media Downloader", Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, FontSize = 15 });
-            brandText.Children.Add(new TextBlock { Text = "download & convert", Foreground = Brush("#82909B"), FontSize = 10.5 });
-            brand.Children.Add(brandText);
+            brandTextPanel = new StackPanel { Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            brandTextPanel.Children.Add(new TextBlock { Text = "MV Media Downloader", Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, FontSize = 15 });
+            brandSubtitle = new TextBlock { Text = "stahování a konverze", Foreground = Brush("#82909B"), FontSize = 10.5 };
+            brandTextPanel.Children.Add(brandSubtitle);
+            brand.Children.Add(brandTextPanel);
             bar.Children.Add(brand);
 
             Border navigation = new Border { Background = Brush("#171E24"), CornerRadius = new CornerRadius(7), Padding = new Thickness(4), VerticalAlignment = VerticalAlignment.Center, Height = 42 };
@@ -192,9 +203,11 @@ namespace MVMediaStudio
             repairButton = CreateTitleButton("\uE90F", "Nástroje");
             repairButton.Margin = new Thickness(0, 11, 10, 11);
             repairMenu = BuildRepairMenu();
+            Theme.StyleMenu(repairMenu, this);
             repairButton.Click += delegate
             {
                 repairMenu.PlacementTarget = repairButton;
+                repairMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
                 repairMenu.IsOpen = true;
             };
             Grid.SetColumn(repairButton, 4);
@@ -204,20 +217,70 @@ namespace MVMediaStudio
             windowButtons.ColumnDefinitions.Add(new ColumnDefinition());
             windowButtons.ColumnDefinitions.Add(new ColumnDefinition());
             windowButtons.ColumnDefinitions.Add(new ColumnDefinition());
-            Button minimize = CreateWindowButton("—", false);
-            Button maximize = CreateWindowButton("□", false);
-            Button close = CreateWindowButton("×", true);
+            Button minimize = CreateWindowButton("\uE921", false);
+            maximizeWindowButton = CreateWindowButton("\uE922", false);
+            Button close = CreateWindowButton("\uE8BB", true);
             minimize.Click += delegate { WindowState = WindowState.Minimized; };
-            maximize.Click += delegate { WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized; };
+            maximizeWindowButton.Click += delegate { WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized; };
             close.Click += delegate { Close(); };
             windowButtons.Children.Add(minimize);
-            Grid.SetColumn(maximize, 1);
-            windowButtons.Children.Add(maximize);
+            Grid.SetColumn(maximizeWindowButton, 1);
+            windowButtons.Children.Add(maximizeWindowButton);
             Grid.SetColumn(close, 2);
             windowButtons.Children.Add(close);
             Grid.SetColumn(windowButtons, 5);
             bar.Children.Add(windowButtons);
             return bar;
+        }
+
+        private void UpdateResponsiveLayout()
+        {
+            double width = ActualWidth;
+            if (width <= 0)
+                return;
+
+            bool compact = width < 1160;
+            bool iconBrand = width < 1040;
+            if (titleBrandColumn != null)
+                titleBrandColumn.Width = new GridLength(iconBrand ? 70 : compact ? 220 : 270);
+            if (titleNavigationColumn != null)
+                titleNavigationColumn.Width = new GridLength(compact ? 280 : 320);
+            if (brandTextPanel != null)
+                brandTextPanel.Visibility = iconBrand ? Visibility.Collapsed : Visibility.Visible;
+            if (brandSubtitle != null)
+                brandSubtitle.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+            if (toolStatusPanel != null)
+                toolStatusPanel.Visibility = width >= 1320 ? Visibility.Visible : Visibility.Collapsed;
+            if (repairButton != null)
+            {
+                bool iconOnly = iconBrand;
+                repairButton.Content = iconOnly
+                    ? (object)new TextBlock
+                    {
+                        Text = "\uE90F",
+                        FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                        FontSize = 15,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        VerticalAlignment = VerticalAlignment.Center
+                    }
+                    : IconText("\uE90F", "Nástroje");
+                repairButton.MinWidth = iconOnly ? 42 : 0;
+                repairButton.Padding = iconOnly ? new Thickness(0) : new Thickness(13, 7, 13, 7);
+                repairButton.ToolTip = iconOnly ? "Nástroje a nastavení" : null;
+            }
+
+            UpdateDownloadResponsiveLayout(width, ActualHeight);
+            UpdateConversionResponsiveLayout(width, ActualHeight);
+        }
+
+        private void UpdateMaximizeGlyph()
+        {
+            if (maximizeWindowButton == null)
+                return;
+            TextBlock glyph = maximizeWindowButton.Content as TextBlock;
+            if (glyph != null)
+                glyph.Text = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
+            maximizeWindowButton.ToolTip = WindowState == WindowState.Maximized ? "Obnovit okno" : "Maximalizovat";
         }
 
         private void Navigate(string page)
@@ -229,6 +292,9 @@ namespace MVMediaStudio
             SetNavSelected(downloadNavButton, download);
             SetNavSelected(conversionNavButton, !download);
             footerStatus.Text = download ? "Stahování připraveno" : "Konverze připravena";
+            Dispatcher.BeginInvoke(
+                new Action(UpdateResponsiveLayout),
+                System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         private static void ConfigurePageScroll(ScrollViewer scroll)
@@ -276,6 +342,8 @@ namespace MVMediaStudio
         {
             settings.Theme = IsDark ? "light" : "dark";
             Theme.Apply(this, IsDark);
+            if (repairMenu != null)
+                Theme.StyleMenu(repairMenu, this);
             themeMenuItem.Header = IsDark ? "Světlý režim" : "Tmavý režim";
             settings.Save();
         }
@@ -295,6 +363,12 @@ namespace MVMediaStudio
                 conversionAdvancedPanel.Visibility = settings.AdvancedMode ? Visibility.Visible : Visibility.Collapsed;
             if (conversionCodecColumn != null)
                 conversionCodecColumn.Visibility = settings.AdvancedMode ? Visibility.Visible : Visibility.Collapsed;
+            if (conversionCodecField != null)
+                conversionCodecField.Visibility = settings.AdvancedMode ? Visibility.Visible : Visibility.Collapsed;
+            if (conversionCodecNoticePanel != null)
+                conversionCodecNoticePanel.Visibility = settings.AdvancedMode ? Visibility.Visible : Visibility.Collapsed;
+            if (!settings.AdvancedMode && conversionCodecCombo != null)
+                SelectCombo(conversionCodecCombo, "h264");
             ApplyDownloadAdvancedMode();
         }
 
@@ -450,7 +524,21 @@ namespace MVMediaStudio
 
         private Button CreateWindowButton(string glyph, bool danger)
         {
-            Button button = new Button { Content = new TextBlock { Text = glyph, FontFamily = new FontFamily("Segoe UI"), FontSize = glyph == "×" ? 18 : 13, FontWeight = FontWeights.SemiBold }, Background = Brushes.Transparent, Foreground = Brushes.White, BorderThickness = new Thickness(0), Padding = new Thickness(0) };
+            Button button = new Button
+            {
+                Content = new TextBlock
+                {
+                    Text = glyph,
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 10,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                },
+                Background = Brushes.Transparent,
+                Foreground = Brushes.White,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(0)
+            };
             if (danger)
                 button.MouseEnter += delegate { button.Background = Brush("#C42B3A"); };
             button.MouseLeave += delegate { button.Background = Brushes.Transparent; };
@@ -520,6 +608,12 @@ namespace MVMediaStudio
             {
                 return Label;
             }
+        }
+
+        private static string ProductVersion()
+        {
+            Version version = typeof(MainWindow).Assembly.GetName().Version;
+            return version.Major + "." + version.Minor + "." + version.Build;
         }
     }
 }

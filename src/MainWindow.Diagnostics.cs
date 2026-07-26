@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
-using System.Windows.Controls;
+using Microsoft.Win32;
 using MVMediaStudio.Core;
 using MVMediaStudio.Services;
 using MVMediaStudio.UI;
@@ -11,44 +11,44 @@ namespace MVMediaStudio
 {
     internal partial class MainWindow
     {
-        private void ShowReportOptions(Button anchor, string area, string log)
+        private void SaveProblemReport(string area, string log)
         {
-            ContextMenu menu = new ContextMenu { MinWidth = 190, PlacementTarget = anchor };
-            Theme.StyleMenu(menu, this);
-            MenuItem github = new MenuItem { Header = "Přes GitHub" };
-            github.Click += delegate { ReportProblem(area, log, false); };
-            MenuItem email = new MenuItem { Header = "E-mailem" };
-            email.Click += delegate { ReportProblem(area, log, true); };
-            menu.Items.Add(github);
-            menu.Items.Add(email);
-            menu.IsOpen = true;
-        }
-
-        private void ReportProblem(string area, string log, bool email)
-        {
-            MessageBoxResult result = MessageBox.Show(
-                "Aplikace vytvoří očištěný diagnostický report a otevře " + (email ? "výchozí poštovní aplikaci." : "nové hlášení na veřejném GitHubu.") + "\n\n" +
-                "Tokeny, klíče, osobní cesty a hodnoty parametrů URL budou odstraněny. Report přesto může obsahovat názvy souborů a adresy navštívených stránek. Pokračovat?",
-                "Nahlásit chybu",
-                MessageBoxButton.OKCancel,
-                MessageBoxImage.Information,
-                MessageBoxResult.OK);
-            if (result != MessageBoxResult.OK)
+            SaveFileDialog saveDialog = new SaveFileDialog
+            {
+                Title = "Uložit diagnostický report",
+                FileName = DiagnosticReportService.SuggestedFileName(area),
+                DefaultExt = ".txt",
+                AddExtension = true,
+                Filter = "Textový soubor (*.txt)|*.txt",
+                FilterIndex = 1,
+                OverwritePrompt = true,
+                CheckPathExists = true
+            };
+            if (saveDialog.ShowDialog(this) != true)
                 return;
 
             try
             {
-                string path = DiagnosticReportService.Create(area, log, tools);
-                string report = File.ReadAllText(path);
-                Clipboard.SetText(report);
+                string report = DiagnosticReportService.Build(area, log, tools);
+                string path = DiagnosticReportService.Save(saveDialog.FileName, report);
+                footerStatus.Text = "Diagnostický report byl uložen";
+
+                ReportReadyDialog dialog = new ReportReadyDialog(this, path);
+                dialog.ShowDialog();
+                if (dialog.Choice == ReportDeliveryChoice.None)
+                    return;
+
+                string target = dialog.Choice == ReportDeliveryChoice.Email ?
+                    DiagnosticReportService.BuildEmailUrl(area, path) :
+                    DiagnosticReportService.BuildIssueUrl(area, path);
                 Process.Start(new ProcessStartInfo
                 {
-                    FileName = email ? DiagnosticReportService.BuildEmailUrl(area, report) : DiagnosticReportService.BuildIssueUrl(area, report),
+                    FileName = target,
                     UseShellExecute = true
                 });
-                footerStatus.Text = email ?
-                    "E-mail je připravený; celý očištěný report je ve schránce" :
-                    "Očištěný report je ve schránce a uložený v datech aplikace";
+                footerStatus.Text = dialog.Choice == ReportDeliveryChoice.Email ?
+                    "Přilož uložený .txt soubor k e-mailu správci" :
+                    "Přilož uložený .txt soubor k hlášení na GitHubu";
             }
             catch (Exception error)
             {

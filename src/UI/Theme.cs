@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Markup;
 using System.Windows.Media;
 
 namespace MVMediaStudio.UI
@@ -27,11 +28,11 @@ namespace MVMediaStudio.UI
         public static void Apply(Window window, bool dark)
         {
             ResourceDictionary resources = window.Resources;
-            resources[WindowBackground] = Brush(dark ? "#101418" : "#F4F6F8");
+            resources[WindowBackground] = Brush(dark ? "#101418" : "#F0F3F6");
             resources[Surface] = Brush(dark ? "#181E24" : "#FFFFFF");
-            resources[SurfaceAlt] = Brush(dark ? "#20272E" : "#EDF1F4");
-            resources[Input] = Brush(dark ? "#12171C" : "#F8FAFB");
-            resources[Border] = Brush(dark ? "#313A43" : "#DCE2E7");
+            resources[SurfaceAlt] = Brush(dark ? "#20272E" : "#E9EEF2");
+            resources[Input] = Brush(dark ? "#12171C" : "#F8FAFC");
+            resources[Border] = Brush(dark ? "#313A43" : "#BEC9D2");
             resources[Text] = Brush(dark ? "#F3F6F8" : "#17212B");
             resources[Muted] = Brush(dark ? "#9DAAB6" : "#60707E");
             resources[Primary] = Brush(dark ? "#20A4F3" : "#087FCE");
@@ -47,6 +48,7 @@ namespace MVMediaStudio.UI
             resources[typeof(ComboBox)] = CreateComboBoxStyle(window);
             resources[typeof(CheckBox)] = CreateCheckBoxStyle(window);
             resources[typeof(ProgressBar)] = CreateProgressStyle(window);
+            resources[typeof(ScrollBar)] = CreateScrollBarStyle();
         }
 
         public static void Bind(FrameworkElement element, DependencyProperty property, string key)
@@ -58,6 +60,16 @@ namespace MVMediaStudio.UI
         {
             menu.Style = CreateContextMenuStyle(window);
             menu.Resources[typeof(MenuItem)] = CreateMenuItemStyle(window);
+            menu.Resources[typeof(Separator)] = CreateSeparatorStyle(window);
+        }
+
+        public static bool IsDarkTheme(Window window)
+        {
+            SolidColorBrush brush = window.FindResource(WindowBackground) as SolidColorBrush;
+            if (brush == null)
+                return true;
+            Color color = brush.Color;
+            return color.R + color.G + color.B < 384;
         }
 
         private static Style CreateButtonStyle(Window window)
@@ -110,6 +122,12 @@ namespace MVMediaStudio.UI
             style.Setters.Add(new Setter(Control.FontFamilyProperty, new FontFamily("Segoe UI")));
             style.Setters.Add(new Setter(Control.FontSizeProperty, 13d));
             style.Setters.Add(new Setter(TextBox.CaretBrushProperty, window.FindResource(Primary)));
+            Trigger focus = new Trigger { Property = UIElement.IsKeyboardFocusWithinProperty, Value = true };
+            focus.Setters.Add(new Setter(Control.BorderBrushProperty, window.FindResource(Primary)));
+            style.Triggers.Add(focus);
+            Trigger disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+            disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.5));
+            style.Triggers.Add(disabled);
             return style;
         }
 
@@ -143,6 +161,7 @@ namespace MVMediaStudio.UI
             FrameworkElementFactory root = new FrameworkElementFactory(typeof(Grid));
 
             FrameworkElementFactory frame = new FrameworkElementFactory(typeof(Border));
+            frame.Name = "comboFrame";
             frame.SetBinding(System.Windows.Controls.Border.BackgroundProperty, new Binding("Background") { RelativeSource = TemplatedParent() });
             frame.SetBinding(System.Windows.Controls.Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = TemplatedParent() });
             frame.SetBinding(System.Windows.Controls.Border.BorderThicknessProperty, new Binding("BorderThickness") { RelativeSource = TemplatedParent() });
@@ -211,6 +230,12 @@ namespace MVMediaStudio.UI
             Trigger disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
             disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.45));
             template.Triggers.Add(disabled);
+            Trigger hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(System.Windows.Controls.Border.BorderBrushProperty, window.FindResource(PrimaryHover), "comboFrame"));
+            template.Triggers.Add(hover);
+            Trigger focus = new Trigger { Property = UIElement.IsKeyboardFocusWithinProperty, Value = true };
+            focus.Setters.Add(new Setter(System.Windows.Controls.Border.BorderBrushProperty, window.FindResource(Primary), "comboFrame"));
+            template.Triggers.Add(focus);
             template.VisualTree = root;
             return template;
         }
@@ -227,6 +252,52 @@ namespace MVMediaStudio.UI
             style.Setters.Add(new Setter(Control.FontSizeProperty, 13d));
             style.Setters.Add(new Setter(FrameworkElement.CursorProperty, System.Windows.Input.Cursors.Hand));
             style.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(0, 0, 22, 0)));
+
+            ControlTemplate template = new ControlTemplate(typeof(CheckBox));
+            FrameworkElementFactory root = new FrameworkElementFactory(typeof(StackPanel));
+            root.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+
+            FrameworkElementFactory box = new FrameworkElementFactory(typeof(Border));
+            box.Name = "checkBoxFrame";
+            box.SetValue(FrameworkElement.WidthProperty, 18d);
+            box.SetValue(FrameworkElement.HeightProperty, 18d);
+            box.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+            box.SetValue(System.Windows.Controls.Border.CornerRadiusProperty, new CornerRadius(3));
+            box.SetValue(System.Windows.Controls.Border.BackgroundProperty, window.FindResource(Input));
+            box.SetValue(System.Windows.Controls.Border.BorderBrushProperty, window.FindResource(Border));
+            box.SetValue(System.Windows.Controls.Border.BorderThicknessProperty, new Thickness(1));
+            FrameworkElementFactory mark = new FrameworkElementFactory(typeof(TextBlock));
+            mark.Name = "checkMark";
+            mark.SetValue(TextBlock.TextProperty, "\uE73E");
+            mark.SetValue(TextBlock.FontFamilyProperty, new FontFamily("Segoe MDL2 Assets"));
+            mark.SetValue(TextBlock.FontSizeProperty, 10d);
+            mark.SetValue(TextBlock.ForegroundProperty, Brushes.White);
+            mark.SetValue(TextBlock.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            mark.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
+            mark.SetValue(UIElement.VisibilityProperty, Visibility.Hidden);
+            box.AppendChild(mark);
+            root.AppendChild(box);
+
+            FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
+            content.SetBinding(ContentPresenter.ContentProperty, new Binding("Content") { RelativeSource = TemplatedParent() });
+            content.SetBinding(ContentPresenter.ContentTemplateProperty, new Binding("ContentTemplate") { RelativeSource = TemplatedParent() });
+            content.SetValue(FrameworkElement.MarginProperty, new Thickness(8, 0, 0, 0));
+            content.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+            root.AppendChild(content);
+            template.VisualTree = root;
+
+            Trigger checkedState = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
+            checkedState.Setters.Add(new Setter(System.Windows.Controls.Border.BackgroundProperty, window.FindResource(Primary), "checkBoxFrame"));
+            checkedState.Setters.Add(new Setter(System.Windows.Controls.Border.BorderBrushProperty, window.FindResource(Primary), "checkBoxFrame"));
+            checkedState.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "checkMark"));
+            template.Triggers.Add(checkedState);
+            Trigger hoverState = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hoverState.Setters.Add(new Setter(System.Windows.Controls.Border.BorderBrushProperty, window.FindResource(PrimaryHover), "checkBoxFrame"));
+            template.Triggers.Add(hoverState);
+            Trigger disabledState = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+            disabledState.Setters.Add(new Setter(UIElement.OpacityProperty, 0.45));
+            template.Triggers.Add(disabledState);
+            style.Setters.Add(new Setter(Control.TemplateProperty, template));
             return style;
         }
 
@@ -238,6 +309,47 @@ namespace MVMediaStudio.UI
             style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
             style.Setters.Add(new Setter(FrameworkElement.HeightProperty, 7d));
             return style;
+        }
+
+        private static Style CreateScrollBarStyle()
+        {
+            const string xaml =
+                "<Style xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" " +
+                "xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" TargetType=\"{x:Type ScrollBar}\">" +
+                "<Setter Property=\"Background\" Value=\"{DynamicResource SurfaceAlt}\"/>" +
+                "<Setter Property=\"Width\" Value=\"12\"/>" +
+                "<Setter Property=\"Template\"><Setter.Value>" +
+                "<ControlTemplate TargetType=\"{x:Type ScrollBar}\">" +
+                "<Grid x:Name=\"Root\" Background=\"{TemplateBinding Background}\" ClipToBounds=\"True\">" +
+                "<Track x:Name=\"PART_Track\" Orientation=\"Vertical\" IsDirectionReversed=\"True\" " +
+                "Minimum=\"{TemplateBinding Minimum}\" Maximum=\"{TemplateBinding Maximum}\" Value=\"{TemplateBinding Value}\" " +
+                "ViewportSize=\"{TemplateBinding ViewportSize}\" Focusable=\"False\">" +
+                "<Track.DecreaseRepeatButton><RepeatButton x:Name=\"DecreaseButton\" Command=\"{x:Static ScrollBar.PageUpCommand}\" Focusable=\"False\">" +
+                "<RepeatButton.Template><ControlTemplate TargetType=\"{x:Type RepeatButton}\"><Border Background=\"Transparent\"/></ControlTemplate></RepeatButton.Template>" +
+                "</RepeatButton></Track.DecreaseRepeatButton>" +
+                "<Track.Thumb><Thumb x:Name=\"ScrollThumb\" MinHeight=\"26\" Background=\"{DynamicResource Border}\">" +
+                "<Thumb.Template><ControlTemplate TargetType=\"{x:Type Thumb}\">" +
+                "<Border x:Name=\"ThumbVisual\" Margin=\"2\" Background=\"{TemplateBinding Background}\" CornerRadius=\"4\"/>" +
+                "<ControlTemplate.Triggers><Trigger Property=\"IsMouseOver\" Value=\"True\">" +
+                "<Setter TargetName=\"ThumbVisual\" Property=\"Background\" Value=\"{DynamicResource Primary}\"/>" +
+                "</Trigger></ControlTemplate.Triggers></ControlTemplate>" +
+                "</Thumb.Template></Thumb></Track.Thumb>" +
+                "<Track.IncreaseRepeatButton><RepeatButton x:Name=\"IncreaseButton\" Command=\"{x:Static ScrollBar.PageDownCommand}\" Focusable=\"False\">" +
+                "<RepeatButton.Template><ControlTemplate TargetType=\"{x:Type RepeatButton}\"><Border Background=\"Transparent\"/></ControlTemplate></RepeatButton.Template>" +
+                "</RepeatButton></Track.IncreaseRepeatButton>" +
+                "</Track></Grid>" +
+                "<ControlTemplate.Triggers><Trigger Property=\"Orientation\" Value=\"Horizontal\">" +
+                "<Setter Property=\"Width\" Value=\"Auto\"/><Setter Property=\"Height\" Value=\"12\"/>" +
+                "<Setter TargetName=\"PART_Track\" Property=\"Orientation\" Value=\"Horizontal\"/>" +
+                "<Setter TargetName=\"PART_Track\" Property=\"IsDirectionReversed\" Value=\"False\"/>" +
+                "<Setter TargetName=\"DecreaseButton\" Property=\"Command\" Value=\"{x:Static ScrollBar.PageLeftCommand}\"/>" +
+                "<Setter TargetName=\"IncreaseButton\" Property=\"Command\" Value=\"{x:Static ScrollBar.PageRightCommand}\"/>" +
+                "<Setter TargetName=\"ScrollThumb\" Property=\"MinHeight\" Value=\"0\"/>" +
+                "<Setter TargetName=\"ScrollThumb\" Property=\"MinWidth\" Value=\"26\"/>" +
+                "</Trigger><Trigger Property=\"IsEnabled\" Value=\"False\"><Setter Property=\"Opacity\" Value=\"0\"/></Trigger>" +
+                "</ControlTemplate.Triggers></ControlTemplate>" +
+                "</Setter.Value></Setter></Style>";
+            return (Style)XamlReader.Parse(xaml);
         }
 
         private static Style CreateContextMenuStyle(Window window)
@@ -279,12 +391,24 @@ namespace MVMediaStudio.UI
             border.Name = "menuItemBorder";
             border.SetBinding(System.Windows.Controls.Border.BackgroundProperty, new Binding("Background") { RelativeSource = TemplatedParent() });
             border.SetValue(System.Windows.Controls.Border.CornerRadiusProperty, new CornerRadius(4));
+            FrameworkElementFactory row = new FrameworkElementFactory(typeof(StackPanel));
+            row.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+            FrameworkElementFactory check = new FrameworkElementFactory(typeof(TextBlock));
+            check.Name = "menuCheck";
+            check.SetValue(TextBlock.TextProperty, "\uE73E");
+            check.SetValue(TextBlock.FontFamilyProperty, new FontFamily("Segoe MDL2 Assets"));
+            check.SetValue(TextBlock.FontSizeProperty, 10d);
+            check.SetValue(FrameworkElement.WidthProperty, 19d);
+            check.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+            check.SetValue(UIElement.VisibilityProperty, Visibility.Hidden);
+            row.AppendChild(check);
             FrameworkElementFactory presenter = new FrameworkElementFactory(typeof(ContentPresenter));
             presenter.SetBinding(ContentPresenter.ContentProperty, new Binding("Header") { RelativeSource = TemplatedParent() });
             presenter.SetBinding(ContentPresenter.ContentTemplateProperty, new Binding("HeaderTemplate") { RelativeSource = TemplatedParent() });
             presenter.SetBinding(ContentPresenter.MarginProperty, new Binding("Padding") { RelativeSource = TemplatedParent() });
             presenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-            border.AppendChild(presenter);
+            row.AppendChild(presenter);
+            border.AppendChild(row);
             template.VisualTree = border;
 
             Trigger highlighted = new Trigger { Property = MenuItem.IsHighlightedProperty, Value = true };
@@ -294,6 +418,22 @@ namespace MVMediaStudio.UI
             Trigger disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
             disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.45));
             template.Triggers.Add(disabled);
+            Trigger checkedState = new Trigger { Property = MenuItem.IsCheckedProperty, Value = true };
+            checkedState.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "menuCheck"));
+            template.Triggers.Add(checkedState);
+            style.Setters.Add(new Setter(Control.TemplateProperty, template));
+            return style;
+        }
+
+        private static Style CreateSeparatorStyle(Window window)
+        {
+            Style style = new Style(typeof(Separator));
+            style.Setters.Add(new Setter(FrameworkElement.HeightProperty, 1d));
+            style.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(10, 5, 10, 5)));
+            ControlTemplate template = new ControlTemplate(typeof(Separator));
+            FrameworkElementFactory line = new FrameworkElementFactory(typeof(Border));
+            line.SetValue(System.Windows.Controls.Border.BackgroundProperty, window.FindResource(Border));
+            template.VisualTree = line;
             style.Setters.Add(new Setter(Control.TemplateProperty, template));
             return style;
         }

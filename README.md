@@ -4,10 +4,16 @@ Windows aplikace od MV pro stahování médií přes yt-dlp, Webshare a přímé
 
 ## Funkce
 
-- přehledné WPF rozhraní se světlým a tmavým režimem;
+- adaptivní WPF rozhraní, které využije větší okno a při menší šířce se samo přeskupí;
+- světlý a tmavý režim včetně nabídek, dialogů a posuvníků;
 - oddělené obrazovky Stahování a Konverze;
+- jednoduchý režim s bezpečnými výchozími hodnotami a volitelný pokročilý režim;
 - kompatibilní výchozí profil MP4 / H.264 s omezením nechtěného AV1;
 - kvalita videa, titulky, playlisty, zvukové profily a cílová složka;
+- automatické rozpoznání běžných zdrojů přímo po vložení odkazů;
+- stručné upozornění na přihlášení, DRM nebo známou změnu českého přehrávače;
+- automatická browser impersonace pro MůjRozhlas, kde běžný požadavek končí chybou 403;
+- načtení existujícího přihlášení z Chrome, Edge, Firefoxu nebo Brave;
 - veřejné epizody TV JOJ a přímé odkazy JOJ Play bez obcházení DRM;
 - dávková konverze až 20 souborů do MP4, MKV, WebM, MOV nebo AVI;
 - H.264, H.265 / HEVC a AV1, CRF i pevný bitrate;
@@ -19,7 +25,7 @@ Windows aplikace od MV pro stahování médií přes yt-dlp, Webshare a přímé
 - Webshare a přímé soubory respektují zvolený formát i maximální kvalitu pomocí následného FFmpeg převodu;
 - Markdown seznamy odkazů se čistí a stejné adresy se zpracují pouze jednou;
 - přímé soubory a oficiální dočasné CDN odkazy bez předávání tokenů do logu;
-- hlášení chyb přes GitHub nebo výchozí e-mailovou aplikaci;
+- uložení očištěného diagnostického `.txt` souboru a následné předání správci e-mailem nebo přes GitHub;
 - automatické aktualizace přes ověřené GitHub Releases.
 
 ## Sestavení
@@ -41,11 +47,19 @@ Testy:
 test.cmd
 ```
 
+Živá kontrola českých zdrojů bez stahování celých médií:
+
+```bat
+czech-sites-test.cmd
+```
+
 Distribuční balíček a SHA-256:
 
 ```bat
 package.cmd
 ```
+
+`package.cmd` při chybějícím nebo nefunkčním yt-dlp stáhne aktuální oficiální verzi a ověří její SHA-256.
 
 Výstup:
 
@@ -67,6 +81,14 @@ Do pole lze vložit adresu epizody `https://www.joj.sk/...` i přímý odkaz `ht
 U přihlášeného obsahu použij tlačítko **Přihlásit JOJ Play**. Aplikace otevře oddělený profil Chrome pouze pro JOJ. Premium obsah bez oprávnění a DRM se nestahuje.
 
 Reálné integrační testy jsou dostupné přes `integration-test.cmd` a `joj-test.cmd`. Tyto testy používají internet a ukládají výsledky do `artifacts`.
+
+## Další weby
+
+Běžné webové adresy zpracovává aktuální yt-dlp. Živá kontrola z 26. 7. 2026 s yt-dlp 2026.07.04 ověřila veřejná média TV Nova, Českého rozhlasu, MůjRozhlasu, Rozhlasu Vltava, Stream.cz, Televize Seznam, TV Noe a DVTV / Aktuálně. Kontrolu lze kdykoli zopakovat přes `czech-sites-test.cmd`; načítá pouze metadata.
+
+Česká televize v době kontroly vracela HTTP 410, CNN Prima změnila přehrávač, Prima+ vyžadovala účet podporovaný přímo yt-dlp a Seznam Zprávy mohl skončit na stránce se souhlasem. Extraktor iDNES / Playtvak je v yt-dlp označený jako dočasně nefunkční. Aplikace tyto stavy ukazuje přímo pod vloženými odkazy a v přehledu **Podporované weby**.
+
+Další běžně rozpoznané platformy zahrnují YouTube, Vimeo, Dailymotion, Twitch, Kick, TikTok, Instagram, Facebook, X, Reddit, Rumble, Streamable, SoundCloud, Bandcamp, Mixcloud a Apple Podcasts. U obsahu přístupného po přihlášení může pomoci **Přihlášení z prohlížeče**; Prima+ je výjimka a samotné cookies nemusí stačit. Aplikace neobchází DRM, předplatné ani oprávnění účtu.
 
 ## Webshare a přímé odkazy
 

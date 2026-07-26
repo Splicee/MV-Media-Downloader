@@ -226,7 +226,7 @@ namespace MVMediaStudio.Services
             public WebshareWebClient()
             {
                 Encoding = Encoding.UTF8;
-                Headers[HttpRequestHeader.UserAgent] = "MV-Media-Downloader/3.1.1";
+                Headers[HttpRequestHeader.UserAgent] = AppInfo.UserAgent;
             }
 
             protected override WebRequest GetWebRequest(Uri address)

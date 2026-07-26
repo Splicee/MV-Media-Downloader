@@ -20,8 +20,11 @@ namespace MVMediaStudio
         private TextBox downloadUrlBox;
         private TextBlock downloadPlaceholder;
         private TextBlock downloadUrlCount;
+        private TextBlock downloadSourceSummary;
+        private TextBlock downloadSourceHint;
         private ComboBox downloadFormatCombo;
         private ComboBox downloadQualityCombo;
+        private ComboBox downloadCookieBrowserCombo;
         private TextBox downloadRateValueBox;
         private CheckBox downloadLimitEnabledCheck;
         private FrameworkElement downloadRateEditor;
@@ -52,14 +55,31 @@ namespace MVMediaStudio
         private bool downloadRateApplyPending;
         private string appliedDownloadRateLimit = "";
         private string activeDownloadEngine = "";
+        private StackPanel downloadContent;
+        private Grid downloadWorkspace;
+        private Border downloadLinkCard;
+        private Border downloadSettingsCard;
+        private FrameworkElement downloadUrlInputHost;
+        private readonly List<string> cachedDownloadUrls = new List<string>();
+        private bool downloadWideLayout;
 
         private Grid BuildDownloadPage()
         {
             Grid page = new Grid();
-            ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+            ScrollViewer scroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch
+            };
             ConfigurePageScroll(scroll);
-            StackPanel content = new StackPanel { Margin = new Thickness(32, 28, 32, 34), MaxWidth = 1160, HorizontalAlignment = HorizontalAlignment.Center };
-            scroll.Content = content;
+            downloadContent = new StackPanel
+            {
+                Margin = new Thickness(32, 28, 32, 34),
+                MaxWidth = 1560,
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+            scroll.Content = downloadContent;
             page.Children.Add(scroll);
 
             Grid header = new Grid { Margin = new Thickness(0, 0, 0, 20) };
@@ -78,7 +98,7 @@ namespace MVMediaStudio
             safePreset.Child = safeText;
             Grid.SetColumn(safePreset, 1);
             header.Children.Add(safePreset);
-            content.Children.Add(header);
+            downloadContent.Children.Add(header);
 
             StackPanel linkPanel = new StackPanel();
             Grid linkHeader = new Grid { Margin = new Thickness(0, 0, 0, 13) };
@@ -89,6 +109,14 @@ namespace MVMediaStudio
             TextBlock linkHint = Text("Jeden odkaz na řádek. Před odkazem může být číslo, například 01 https://…", 11.5, Theme.Muted);
             linkHint.Margin = new Thickness(0, 3, 0, 0);
             linkTitle.Children.Add(linkHint);
+            downloadSourceSummary = Text("Zdroj rozpoznám automaticky.", 11.5, Theme.Primary);
+            downloadSourceSummary.Margin = new Thickness(0, 4, 0, 0);
+            linkTitle.Children.Add(downloadSourceSummary);
+            downloadSourceHint = Text("", 11, Theme.Warning);
+            downloadSourceHint.Margin = new Thickness(0, 3, 0, 0);
+            downloadSourceHint.TextWrapping = TextWrapping.Wrap;
+            downloadSourceHint.Visibility = Visibility.Collapsed;
+            linkTitle.Children.Add(downloadSourceHint);
             linkHeader.Children.Add(linkTitle);
             downloadUrlCount = Text("0 odkazů", 11.5, Theme.Muted);
             downloadUrlCount.FontWeight = FontWeights.SemiBold;
@@ -98,11 +126,12 @@ namespace MVMediaStudio
             linkPanel.Children.Add(linkHeader);
 
             Grid inputHost = new Grid { Height = 122 };
+            downloadUrlInputHost = inputHost;
             downloadUrlBox = new TextBox { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(13, 12, 13, 12), AllowDrop = true };
             downloadUrlBox.TextChanged += delegate
             {
                 downloadPlaceholder.Visibility = string.IsNullOrWhiteSpace(downloadUrlBox.Text) ? Visibility.Visible : Visibility.Collapsed;
-                UpdateDownloadUrlCount();
+                RefreshDownloadInputAnalysis();
                 UpdateDownloadButtons();
             };
             downloadUrlBox.PreviewDragOver += delegate(object sender, DragEventArgs eventArgs)
@@ -116,14 +145,17 @@ namespace MVMediaStudio
                     downloadUrlBox.Text = Convert.ToString(eventArgs.Data.GetData(DataFormats.Text));
             };
             inputHost.Children.Add(downloadUrlBox);
-            downloadPlaceholder = Text("YouTube, JOJ Play, Webshare nebo přímý odkaz na soubor…", 13, Theme.Muted);
+            downloadPlaceholder = Text("YouTube, ČT, Nova, Stream.cz, Český rozhlas, TV Noe, JOJ nebo další web…", 13, Theme.Muted);
             downloadPlaceholder.Margin = new Thickness(14, 13, 0, 0);
             downloadPlaceholder.VerticalAlignment = VerticalAlignment.Top;
             downloadPlaceholder.IsHitTestVisible = false;
             inputHost.Children.Add(downloadPlaceholder);
             linkPanel.Children.Add(inputHost);
 
-            StackPanel linkActions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+            Grid linkActions = new Grid { Margin = new Thickness(0, 12, 0, 0) };
+            linkActions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            linkActions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            StackPanel primaryLinkActions = new StackPanel { Orientation = Orientation.Horizontal };
             Button paste = CreateActionButton("\uE77F", "Vložit ze schránky");
             Button clear = CreateActionButton("\uE74D", "Vymazat");
             clear.Margin = new Thickness(8, 0, 0, 0);
@@ -132,20 +164,27 @@ namespace MVMediaStudio
                 try { if (Clipboard.ContainsText()) downloadUrlBox.Text = Clipboard.GetText(); } catch { }
             };
             clear.Click += delegate { downloadUrlBox.Clear(); downloadUrlBox.Focus(); };
-            linkActions.Children.Add(paste);
-            linkActions.Children.Add(clear);
+            primaryLinkActions.Children.Add(paste);
+            primaryLinkActions.Children.Add(clear);
+            linkActions.Children.Add(primaryLinkActions);
+            Button supportedSources = CreateActionButton("\uE946", "Podporované weby");
+            supportedSources.Click += delegate { new SourceSupportDialog(this).ShowDialog(); };
+            Grid.SetColumn(supportedSources, 1);
+            linkActions.Children.Add(supportedSources);
             linkPanel.Children.Add(linkActions);
 
-            Border linkCard = Card(linkPanel);
-            content.Children.Add(linkCard);
+            downloadLinkCard = Card(linkPanel);
 
             StackPanel settingsPanel = new StackPanel();
             settingsPanel.Children.Add(Heading("Výsledek", 17));
-            Grid choices = new Grid { Margin = new Thickness(0, 16, 0, 0) };
-            choices.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.65, GridUnitType.Star) });
-            choices.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.85, GridUnitType.Star) });
-            choices.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.4, GridUnitType.Star) });
-            choices.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.95, GridUnitType.Star) });
+            AdaptiveGrid choices = new AdaptiveGrid
+            {
+                Margin = new Thickness(0, 16, 0, 0),
+                ItemMinWidth = 300,
+                MaximumColumns = 4,
+                ColumnSpacing = 12,
+                RowSpacing = 14
+            };
 
             downloadFormatCombo = Combo(
                 new ComboItem("mp4-h264", "Video + zvuk · MP4 / H.264"),
@@ -170,8 +209,6 @@ namespace MVMediaStudio
             downloadQualityCombo.ToolTip = "Vyšší video zůstane zachované nebo se zmenší na zvolenou maximální výšku.";
             SelectCombo(downloadQualityCombo, settings.DownloadQuality);
             Border quality = Labeled("Kvalita", downloadQualityCombo);
-            quality.Margin = new Thickness(12, 0, 0, 0);
-            Grid.SetColumn(quality, 1);
             choices.Children.Add(quality);
 
             appliedDownloadRateLimit = settings.DownloadRateLimit ?? "";
@@ -254,8 +291,6 @@ namespace MVMediaStudio
                 UpdateDownloadButtons();
             };
             Border rate = Labeled("Rychlost stahování", ratePanel);
-            rate.Margin = new Thickness(12, 0, 0, 0);
-            Grid.SetColumn(rate, 2);
             choices.Children.Add(rate);
 
             Grid folderGrid = new Grid();
@@ -275,25 +310,52 @@ namespace MVMediaStudio
             Grid.SetColumn(open, 2);
             folderGrid.Children.Add(open);
             Border folder = Labeled("Cílová složka", folderGrid);
-            folder.Margin = new Thickness(12, 0, 0, 0);
-            Grid.SetColumn(folder, 3);
             choices.Children.Add(folder);
             settingsPanel.Children.Add(choices);
 
-            Grid optionRow = new Grid { Margin = new Thickness(0, 18, 0, 0) };
-            optionRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            optionRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            AdaptiveGrid optionRow = new AdaptiveGrid
+            {
+                Margin = new Thickness(0, 18, 0, 0),
+                ItemMinWidth = 430,
+                MaximumColumns = 2,
+                ColumnSpacing = 14,
+                RowSpacing = 12
+            };
             WrapPanel checks = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
             downloadSubtitlesCheck = new CheckBox { Content = "Titulky CS/EN", IsChecked = settings.Subtitles };
             downloadPlaylistCheck = new CheckBox { Content = "Celý playlist" };
-            downloadCookiesCheck = new CheckBox { Content = "Přihlášení z Chrome" };
             downloadNoOverwriteCheck = new CheckBox { Content = "Nepřepisovat existující", IsChecked = settings.NoOverwrite };
             checks.Children.Add(downloadSubtitlesCheck);
             checks.Children.Add(downloadPlaylistCheck);
-            checks.Children.Add(downloadCookiesCheck);
             checks.Children.Add(downloadNoOverwriteCheck);
+            StackPanel browserLogin = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 18, 0) };
+            downloadCookiesCheck = new CheckBox
+            {
+                Content = "Přihlášení z prohlížeče",
+                IsChecked = settings.UseBrowserCookies,
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            browserLogin.Children.Add(downloadCookiesCheck);
+            downloadCookieBrowserCombo = Combo(
+                new ComboItem("chrome", "Chrome"),
+                new ComboItem("edge", "Edge"),
+                new ComboItem("firefox", "Firefox"),
+                new ComboItem("brave", "Brave"));
+            downloadCookieBrowserCombo.MinWidth = 125;
+            downloadCookieBrowserCombo.ToolTip = "Vyber prohlížeč, ve kterém jsi na daném webu přihlášený.";
+            SelectCombo(downloadCookieBrowserCombo, settings.CookieBrowser);
+            downloadCookieBrowserCombo.Visibility = settings.UseBrowserCookies ? Visibility.Visible : Visibility.Collapsed;
+            browserLogin.Children.Add(downloadCookieBrowserCombo);
+            downloadCookiesCheck.Checked += delegate { downloadCookieBrowserCombo.Visibility = Visibility.Visible; };
+            downloadCookiesCheck.Unchecked += delegate { downloadCookieBrowserCombo.Visibility = Visibility.Collapsed; };
+            checks.Children.Add(browserLogin);
             optionRow.Children.Add(checks);
-            StackPanel providerActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            WrapPanel providerActions = new WrapPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
             webshareLoginButton = CreateActionButton("\uE77B", WebshareService.HasSession ? "Webshare ✓" : "Přihlásit Webshare");
             webshareLoginButton.VerticalAlignment = VerticalAlignment.Center;
             webshareLoginButton.ToolTip = "Přihlášení přes oficiální Webshare API";
@@ -305,12 +367,15 @@ namespace MVMediaStudio
             jojLogin.ToolTip = "Otevře oddělený Chrome profil používaný pouze pro JOJ Play";
             jojLogin.Click += delegate { OpenJojPlayLogin(); };
             providerActions.Children.Add(jojLogin);
-            Grid.SetColumn(providerActions, 1);
             optionRow.Children.Add(providerActions);
             settingsPanel.Children.Add(optionRow);
-            Border settingsCard = Card(settingsPanel);
-            settingsCard.Margin = new Thickness(0, 14, 0, 0);
-            content.Children.Add(settingsCard);
+            downloadSettingsCard = Card(settingsPanel);
+
+            downloadWorkspace = new Grid();
+            downloadWorkspace.Children.Add(downloadLinkCard);
+            downloadWorkspace.Children.Add(downloadSettingsCard);
+            ArrangeDownloadWorkspace(false);
+            downloadContent.Children.Add(downloadWorkspace);
 
             StackPanel advanced = new StackPanel();
             advanced.Children.Add(Heading("Pokročilé argumenty yt-dlp", 15));
@@ -322,7 +387,7 @@ namespace MVMediaStudio
             Border advancedCard = Card(advanced);
             advancedCard.Margin = new Thickness(0, 14, 0, 0);
             downloadAdvancedPanel = advancedCard;
-            content.Children.Add(advancedCard);
+            downloadContent.Children.Add(advancedCard);
 
             Grid actions = new Grid { Margin = new Thickness(0, 18, 0, 0) };
             actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -339,17 +404,17 @@ namespace MVMediaStudio
             downloadCancelButton.Click += delegate { CancelActiveWork(); };
             Grid.SetColumn(downloadCancelButton, 1);
             actions.Children.Add(downloadCancelButton);
-            downloadReportButton = CreateActionButton("\uE8BD", "Nahlásit chybu ▾");
+            downloadReportButton = CreateActionButton("\uE8BD", "Nahlásit chybu");
             downloadReportButton.Margin = new Thickness(0, 0, 8, 0);
             downloadReportButton.Visibility = Visibility.Collapsed;
-            downloadReportButton.Click += delegate { ShowReportOptions(downloadReportButton, "Stahování", downloadLog.ToString()); };
+            downloadReportButton.Click += delegate { SaveProblemReport("Stahování", downloadLog.ToString()); };
             Grid.SetColumn(downloadReportButton, 3);
             actions.Children.Add(downloadReportButton);
             downloadLogToggle = CreateActionButton("\uE756", "Zobrazit log");
             downloadLogToggle.Click += delegate { ToggleDownloadLog(); };
             Grid.SetColumn(downloadLogToggle, 4);
             actions.Children.Add(downloadLogToggle);
-            content.Children.Add(actions);
+            downloadContent.Children.Add(actions);
 
             Grid progressPanel = new Grid();
             progressPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -375,7 +440,7 @@ namespace MVMediaStudio
             progressPanel.Children.Add(downloadProgress);
             Border progressCard = Card(progressPanel);
             progressCard.Margin = new Thickness(0, 14, 0, 0);
-            content.Children.Add(progressCard);
+            downloadContent.Children.Add(progressCard);
 
             downloadLogBox = new TextBox { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, MinHeight = 180, MaxHeight = 260, FontFamily = new FontFamily("Consolas"), FontSize = 11.5 };
             Theme.Bind(downloadLogBox, Control.BackgroundProperty, Theme.Console);
@@ -383,8 +448,9 @@ namespace MVMediaStudio
             downloadLogCard = Card(downloadLogBox);
             downloadLogCard.Margin = new Thickness(0, 14, 0, 0);
             downloadLogCard.Visibility = Visibility.Collapsed;
-            content.Children.Add(downloadLogCard);
+            downloadContent.Children.Add(downloadLogCard);
 
+            RefreshDownloadInputAnalysis();
             UpdateDownloadButtons();
             return page;
         }
@@ -419,12 +485,7 @@ namespace MVMediaStudio
                     directRoutes.Add(route);
             }
 
-            bool hasJojPlay = ytDlpUrls.Exists(delegate(string value)
-            {
-                Uri uri;
-                return Uri.TryCreate(value, UriKind.Absolute, out uri) &&
-                    string.Equals(uri.Host, "play.joj.sk", StringComparison.OrdinalIgnoreCase);
-            });
+            bool hasJojPlay = ytDlpUrls.Exists(IsJojPlayUrl);
             if (hasJojPlay && !JojLoginService.IsReady && !OpenJojPlayLogin())
                 return;
             if (hasJojPlay)
@@ -480,7 +541,7 @@ namespace MVMediaStudio
                 Playlist = downloadPlaylistCheck.IsChecked == true,
                 Subtitles = downloadSubtitlesCheck.IsChecked == true,
                 CookiesFromBrowser = downloadCookiesCheck.IsChecked == true,
-                CookieBrowserSpec = hasJojPlay ? "chrome:" + JojLoginService.ProfileDirectory : "chrome",
+                CookieBrowserSpec = ComboValue(downloadCookieBrowserCombo, "chrome"),
                 NoOverwrite = downloadNoOverwriteCheck.IsChecked == true,
                 ExtraArguments = downloadExtraArgsBox.Text
             };
@@ -580,11 +641,27 @@ namespace MVMediaStudio
             if (exitCode != -2 && ytDlpUrls.Count > 0)
             {
                 activeDownloadEngine = "ytdlp";
-                int ytDlpExit = await RunYtDlpDownloadAsync(options, ytDlpUrls);
-                if (ytDlpExit == -2)
-                    exitCode = -2;
-                else if (ytDlpExit != 0)
-                    exitCode = ytDlpExit;
+                List<string> regularUrls = ytDlpUrls.FindAll(delegate(string value) { return !IsJojPlayUrl(value); });
+                List<string> jojPlayUrls = ytDlpUrls.FindAll(IsJojPlayUrl);
+                if (regularUrls.Count > 0)
+                {
+                    int ytDlpExit = await RunYtDlpDownloadAsync(options, regularUrls);
+                    if (ytDlpExit == -2)
+                        exitCode = -2;
+                    else if (ytDlpExit != 0)
+                        exitCode = ytDlpExit;
+                }
+                if (exitCode != -2 && jojPlayUrls.Count > 0)
+                {
+                    DownloadOptions jojOptions = CopyDownloadOptions(options);
+                    jojOptions.CookiesFromBrowser = true;
+                    jojOptions.CookieBrowserSpec = "chrome:" + JojLoginService.ProfileDirectory;
+                    int jojExit = await RunYtDlpDownloadAsync(jojOptions, jojPlayUrls);
+                    if (jojExit == -2)
+                        exitCode = -2;
+                    else if (jojExit != 0)
+                        exitCode = jojExit;
+                }
             }
 
             CommitDownloadLiveLog();
@@ -672,6 +749,30 @@ namespace MVMediaStudio
                 break;
             }
             return exitCode;
+        }
+
+        private static bool IsJojPlayUrl(string value)
+        {
+            Uri uri;
+            return Uri.TryCreate(value, UriKind.Absolute, out uri) &&
+                string.Equals(uri.Host, "play.joj.sk", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static DownloadOptions CopyDownloadOptions(DownloadOptions source)
+        {
+            return new DownloadOptions
+            {
+                Preset = source.Preset,
+                Quality = source.Quality,
+                RateLimit = source.RateLimit,
+                OutputDirectory = source.OutputDirectory,
+                Playlist = source.Playlist,
+                Subtitles = source.Subtitles,
+                CookiesFromBrowser = source.CookiesFromBrowser,
+                CookieBrowserSpec = source.CookieBrowserSpec,
+                NoOverwrite = source.NoOverwrite,
+                ExtraArguments = source.ExtraArguments
+            };
         }
 
         private void HandleDirectDownloadProgress(DirectDownloadProgress progress)
@@ -909,20 +1010,92 @@ namespace MVMediaStudio
 
         private void UpdateDownloadUrlCount()
         {
-            int count = ValidDownloadUrls().Count;
+            int count = cachedDownloadUrls.Count;
             downloadUrlCount.Text = count == 1 ? "1 odkaz" : count + " odkazů";
             if (count > 0)
             {
                 downloadStatusTitle.Text = "Připraveno ke stažení";
                 downloadStatusDetail.Text = count == 1 ? "Odkaz je připravený." : count + " odkazů je připravených.";
             }
+            else if (!busy)
+            {
+                downloadStatusTitle.Text = "Připraveno ke stažení";
+                downloadStatusDetail.Text = "Čekám na odkaz.";
+            }
         }
 
         private List<string> ValidDownloadUrls()
         {
-            if (downloadUrlBox == null)
-                return new List<string>();
-            return DownloadUrlParser.Parse(downloadUrlBox.Text);
+            return new List<string>(cachedDownloadUrls);
+        }
+
+        private void RefreshDownloadInputAnalysis()
+        {
+            cachedDownloadUrls.Clear();
+            if (downloadUrlBox != null)
+                cachedDownloadUrls.AddRange(DownloadUrlParser.Parse(downloadUrlBox.Text));
+            UpdateDownloadUrlCount();
+
+            if (downloadSourceSummary == null)
+                return;
+            if (cachedDownloadUrls.Count == 0)
+            {
+                downloadSourceSummary.Text = "Zdroj rozpoznám automaticky.";
+                Theme.Bind(downloadSourceSummary, TextBlock.ForegroundProperty, Theme.Muted);
+                downloadSourceHint.Text = "";
+                downloadSourceHint.ToolTip = null;
+                downloadSourceHint.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            Dictionary<string, int> counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            List<string> order = new List<string>();
+            List<string> guidance = new List<string>();
+            bool unsupported = false;
+            foreach (string url in cachedDownloadUrls)
+            {
+                DownloadRoute route = DownloadSourceRouter.Classify(url);
+                string label = route.Provider;
+                if (route.Kind == DownloadProviderKind.Unsupported)
+                {
+                    label += " · nepodporováno";
+                    unsupported = true;
+                }
+                if (!counts.ContainsKey(label))
+                {
+                    counts[label] = 0;
+                    order.Add(label);
+                }
+                counts[label]++;
+                if (!string.IsNullOrWhiteSpace(route.Message) && !guidance.Contains(route.Message))
+                    guidance.Add(route.Message);
+            }
+
+            List<string> summary = new List<string>();
+            int visible = Math.Min(4, order.Count);
+            for (int index = 0; index < visible; index++)
+            {
+                string label = order[index];
+                summary.Add(counts[label] > 1 ? label + " " + counts[label] + "×" : label);
+            }
+            if (order.Count > visible)
+                summary.Add("+" + (order.Count - visible) + " další");
+            downloadSourceSummary.Text = string.Join("  ·  ", summary.ToArray());
+            Theme.Bind(downloadSourceSummary, TextBlock.ForegroundProperty, unsupported ? Theme.Warning : Theme.Success);
+            if (guidance.Count == 0)
+            {
+                downloadSourceHint.Text = "";
+                downloadSourceHint.ToolTip = null;
+                downloadSourceHint.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                int shown = Math.Min(2, guidance.Count);
+                downloadSourceHint.Text = string.Join("  •  ", guidance.GetRange(0, shown).ToArray()) +
+                    (guidance.Count > shown ? "  +" + (guidance.Count - shown) + " další upozornění" : "");
+                downloadSourceHint.ToolTip = string.Join(Environment.NewLine, guidance.ToArray());
+                downloadSourceHint.Visibility = Visibility.Visible;
+            }
         }
 
         private void SetDownloadStatus(string title, string detail, string colorKey)
@@ -950,6 +1123,8 @@ namespace MVMediaStudio
             settings.DownloadPreset = ComboValue(downloadFormatCombo, "mp4-h264");
             settings.DownloadQuality = ComboValue(downloadQualityCombo, "1080");
             settings.DownloadDirectory = string.IsNullOrWhiteSpace(downloadFolderBox.Text) ? AppPaths.DefaultDownloadDirectory : downloadFolderBox.Text;
+            settings.UseBrowserCookies = downloadCookiesCheck.IsChecked == true;
+            settings.CookieBrowser = ComboValue(downloadCookieBrowserCombo, "chrome");
             settings.NoOverwrite = downloadNoOverwriteCheck.IsChecked == true;
             settings.Subtitles = downloadSubtitlesCheck.IsChecked == true;
         }
@@ -1126,7 +1301,7 @@ namespace MVMediaStudio
         {
             if (downloadStartButton == null)
                 return;
-            downloadStartButton.IsEnabled = !busy && ValidDownloadUrls().Count > 0;
+            downloadStartButton.IsEnabled = !busy && cachedDownloadUrls.Count > 0;
             downloadCancelButton.IsEnabled = busy && activeOperation == "download";
             if (downloadApplyRateButton != null)
             {
@@ -1154,6 +1329,57 @@ namespace MVMediaStudio
             catch
             {
             }
+        }
+
+        private void ArrangeDownloadWorkspace(bool wide)
+        {
+            if (downloadWorkspace == null || downloadLinkCard == null || downloadSettingsCard == null)
+                return;
+
+            downloadWorkspace.RowDefinitions.Clear();
+            downloadWorkspace.ColumnDefinitions.Clear();
+            downloadWideLayout = wide;
+            if (wide)
+            {
+                downloadWorkspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                downloadWorkspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.02, GridUnitType.Star) });
+                downloadWorkspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.18, GridUnitType.Star) });
+                Grid.SetRow(downloadLinkCard, 0);
+                Grid.SetColumn(downloadLinkCard, 0);
+                downloadLinkCard.Margin = new Thickness(0);
+                Grid.SetRow(downloadSettingsCard, 0);
+                Grid.SetColumn(downloadSettingsCard, 1);
+                downloadSettingsCard.Margin = new Thickness(14, 0, 0, 0);
+            }
+            else
+            {
+                downloadWorkspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                downloadWorkspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                downloadWorkspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                Grid.SetRow(downloadLinkCard, 0);
+                Grid.SetColumn(downloadLinkCard, 0);
+                downloadLinkCard.Margin = new Thickness(0);
+                Grid.SetRow(downloadSettingsCard, 1);
+                Grid.SetColumn(downloadSettingsCard, 0);
+                downloadSettingsCard.Margin = new Thickness(0, 14, 0, 0);
+            }
+        }
+
+        private void UpdateDownloadResponsiveLayout(double windowWidth, double windowHeight)
+        {
+            if (downloadContent == null)
+                return;
+
+            double horizontalMargin = windowWidth >= 1700 ? 44 : windowWidth >= 1200 ? 32 : 20;
+            downloadContent.Margin = new Thickness(horizontalMargin, 26, horizontalMargin, 34);
+            bool wide = windowWidth >= 1280;
+            if (wide != downloadWideLayout)
+                ArrangeDownloadWorkspace(wide);
+
+            if (downloadUrlInputHost != null)
+                downloadUrlInputHost.Height = Math.Max(122, Math.Min(170, windowHeight * 0.16));
+            if (downloadLogBox != null)
+                downloadLogBox.MaxHeight = Math.Max(260, Math.Min(390, windowHeight * 0.42));
         }
     }
 }

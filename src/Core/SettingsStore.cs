@@ -12,12 +12,14 @@ namespace MVMediaStudio.Core
         public string DownloadPreset = "mp4-h264";
         public string DownloadQuality = "1080";
         public string DownloadRateLimit = "";
+        public string CookieBrowser = "chrome";
         public string WebshareUserName = "";
         public string ConversionFormat = "mp4";
         public string ConversionCodec = "h264";
         public string ConversionAudioCodec = "aac";
         public string Theme = "dark";
         public bool AdvancedMode;
+        public bool UseBrowserCookies;
         public bool NoOverwrite = true;
         public bool Subtitles;
         public bool AutoUpdate = true;
@@ -43,12 +45,14 @@ namespace MVMediaStudio.Core
                 settings.DownloadPreset = Get(values, "DownloadPreset", settings.DownloadPreset);
                 settings.DownloadQuality = Get(values, "DownloadQuality", settings.DownloadQuality);
                 settings.DownloadRateLimit = Get(values, "DownloadRateLimit", settings.DownloadRateLimit, true);
+                settings.CookieBrowser = Get(values, "CookieBrowser", settings.CookieBrowser);
                 settings.WebshareUserName = Get(values, "WebshareUserName", settings.WebshareUserName, true);
                 settings.ConversionFormat = Get(values, "ConversionFormat", settings.ConversionFormat);
                 settings.ConversionCodec = Get(values, "ConversionCodec", settings.ConversionCodec);
                 settings.ConversionAudioCodec = Get(values, "ConversionAudioCodec", settings.ConversionAudioCodec);
                 settings.Theme = Get(values, "Theme", settings.Theme);
                 settings.AdvancedMode = GetBool(values, "AdvancedMode", settings.AdvancedMode);
+                settings.UseBrowserCookies = GetBool(values, "UseBrowserCookies", settings.UseBrowserCookies);
                 settings.NoOverwrite = GetBool(values, "NoOverwrite", settings.NoOverwrite);
                 settings.Subtitles = GetBool(values, "Subtitles", settings.Subtitles);
                 settings.AutoUpdate = GetBool(values, "AutoUpdate", settings.AutoUpdate);
@@ -72,12 +76,14 @@ namespace MVMediaStudio.Core
                     "DownloadPreset=" + DownloadPreset,
                     "DownloadQuality=" + DownloadQuality,
                     "DownloadRateLimit=" + DownloadRateLimit,
+                    "CookieBrowser=" + CookieBrowser,
                     "WebshareUserName=" + WebshareUserName,
                     "ConversionFormat=" + ConversionFormat,
                     "ConversionCodec=" + ConversionCodec,
                     "ConversionAudioCodec=" + ConversionAudioCodec,
                     "Theme=" + Theme,
                     "AdvancedMode=" + AdvancedMode,
+                    "UseBrowserCookies=" + UseBrowserCookies,
                     "NoOverwrite=" + NoOverwrite,
                     "Subtitles=" + Subtitles,
                     "AutoUpdate=" + AutoUpdate

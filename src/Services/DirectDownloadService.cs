@@ -94,7 +94,7 @@ namespace MVMediaStudio.Services
         {
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
             request.Method = "GET";
-            request.UserAgent = "MV-Media-Downloader/3.1.1";
+            request.UserAgent = AppInfo.UserAgent;
             request.AllowAutoRedirect = true;
             request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
             request.Timeout = 30000;
