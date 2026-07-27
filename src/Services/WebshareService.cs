@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
 using MVMediaStudio.Core;
@@ -19,6 +21,7 @@ namespace MVMediaStudio.Services
     internal static class WebshareService
     {
         private const string ApiBase = "https://webshare.cz/api/";
+        private static readonly HttpClient Client = CreateClient();
         private static string sessionToken;
 
         public static bool HasSession
@@ -67,6 +70,11 @@ namespace MVMediaStudio.Services
 
         public static async Task<DirectDownloadItem> ResolveAsync(string sourceUrl)
         {
+            return await ResolveAsync(sourceUrl, CancellationToken.None);
+        }
+
+        public static async Task<DirectDownloadItem> ResolveAsync(string sourceUrl, CancellationToken cancellationToken)
+        {
             string ident = DownloadSourceRouter.ExtractWebshareIdent(sourceUrl);
             if (string.IsNullOrWhiteSpace(ident))
                 throw new InvalidOperationException("Webshare odkaz neobsahuje platný identifikátor souboru.");
@@ -76,7 +84,7 @@ namespace MVMediaStudio.Services
                 { "ident", ident },
                 { "password", "" },
                 { "maybe_removed", "0" }
-            }));
+            }), cancellationToken);
             EnsureOk(info);
             string name = Value(info, "name");
             long size;
@@ -97,7 +105,7 @@ namespace MVMediaStudio.Services
                 { "device_res_x", "1920" },
                 { "device_res_y", "1080" },
                 { "force_https", "1" }
-            }));
+            }), cancellationToken);
             EnsureOk(link);
             string directUrl = Value(link, "link");
             Uri parsed;
@@ -124,34 +132,57 @@ namespace MVMediaStudio.Services
 
         private static Task<XmlDocument> PostAsync(string endpoint, Dictionary<string, string> values)
         {
-            return Task.Run(delegate
+            return PostAsync(endpoint, values, CancellationToken.None);
+        }
+
+        private static async Task<XmlDocument> PostAsync(
+            string endpoint,
+            Dictionary<string, string> values,
+            CancellationToken cancellationToken)
+        {
+            using (HttpRequestMessage request = CreateApiRequest(endpoint, values))
+            using (HttpResponseMessage response = await Client.SendAsync(
+                request,
+                HttpCompletionOption.ResponseContentRead,
+                cancellationToken).ConfigureAwait(false))
             {
-                using (WebshareWebClient client = new WebshareWebClient())
-                {
-                    ConfigureApiClient(client);
-                    byte[] response = client.UploadValues(ApiBase + endpoint, "POST", ToNameValueCollection(values));
-                    XmlDocument document = new XmlDocument();
-                    document.LoadXml(Encoding.UTF8.GetString(response));
-                    return document;
-                }
-            });
+                response.EnsureSuccessStatusCode();
+                byte[] content = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+                XmlDocument document = new XmlDocument();
+                document.LoadXml(Encoding.UTF8.GetString(content));
+                return document;
+            }
         }
 
-        internal static void ConfigureApiClient(WebClient client)
+        internal static HttpRequestMessage CreateApiRequest(string endpoint, Dictionary<string, string> values)
         {
-            if (client == null)
-                throw new ArgumentNullException("client");
-            ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
-            client.Encoding = Encoding.UTF8;
-            client.Headers[HttpRequestHeader.Accept] = "text/xml; charset=UTF-8";
-        }
+            if (string.IsNullOrWhiteSpace(endpoint))
+                throw new ArgumentException("Chybí název Webshare API operace.", "endpoint");
+            if (values == null)
+                throw new ArgumentNullException("values");
 
-        private static System.Collections.Specialized.NameValueCollection ToNameValueCollection(Dictionary<string, string> values)
-        {
-            System.Collections.Specialized.NameValueCollection result = new System.Collections.Specialized.NameValueCollection();
+            List<KeyValuePair<string, string>> form = new List<KeyValuePair<string, string>>();
             foreach (KeyValuePair<string, string> pair in values)
-                result[pair.Key] = pair.Value ?? "";
-            return result;
+                form.Add(new KeyValuePair<string, string>(pair.Key, pair.Value ?? ""));
+
+            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, ApiBase + endpoint);
+            request.Headers.UserAgent.ParseAdd(AppInfo.UserAgent);
+            request.Headers.Referrer = new Uri("https://webshare.cz/");
+            request.Headers.TryAddWithoutValidation("Accept", "text/xml; charset=UTF-8");
+            request.Content = new FormUrlEncodedContent(form);
+            return request;
+        }
+
+        private static HttpClient CreateClient()
+        {
+            HttpClientHandler handler = new HttpClientHandler
+            {
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            };
+            return new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromSeconds(30)
+            };
         }
 
         private static void EnsureOk(XmlDocument document)
@@ -221,26 +252,6 @@ namespace MVMediaStudio.Services
             }
         }
 
-        private sealed class WebshareWebClient : WebClient
-        {
-            public WebshareWebClient()
-            {
-                Encoding = Encoding.UTF8;
-                Headers[HttpRequestHeader.UserAgent] = AppInfo.UserAgent;
-            }
-
-            protected override WebRequest GetWebRequest(Uri address)
-            {
-                WebRequest request = base.GetWebRequest(address);
-                HttpWebRequest http = request as HttpWebRequest;
-                if (http != null)
-                {
-                    http.Referer = "https://webshare.cz/";
-                    http.Timeout = 30000;
-                }
-                return request;
-            }
-        }
     }
 
     internal static class WebshareDeviceId

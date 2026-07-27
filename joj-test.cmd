@@ -1,19 +1,25 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions
+chcp 65001 >nul
 
 set "ROOT=%~dp0"
-set "CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-if not exist "%CSC%" set "CSC=C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
-set "TEST_EXE=%ROOT%dist\joj-integration-tests.exe"
+set "PROJECT=%ROOT%tests\MVMediaStudio.JojIntegrationTests\MVMediaStudio.JojIntegrationTests.csproj"
+set "MV_MEDIA_DOWNLOADER_DATA_DIR=%ROOT%artifacts\test-data\joj"
+set "PATH=%ROOT%tools;%PATH%"
+set "DOTNET_CLI_TELEMETRY_OPTOUT=1"
+set "DOTNET_NOLOGO=1"
 
-set "SOURCES="
-for /R "%ROOT%src\Core" %%F in (*.cs) do set "SOURCES=!SOURCES! "%%F""
-for /R "%ROOT%src\Services" %%F in (*.cs) do if /I not "%%~nxF"=="UpdateService.cs" set "SOURCES=!SOURCES! "%%F""
+where dotnet >nul 2>&1
+if errorlevel 1 (
+  echo CHYBA: Nebylo nalezeno .NET 10 SDK.
+  exit /b 1
+)
 
-"%CSC%" /nologo /target:exe /platform:anycpu /optimize+ /nowarn:0649 /codepage:65001 /out:"%TEST_EXE%" /reference:System.dll /reference:System.Core.dll /reference:System.Security.dll /reference:System.Web.Extensions.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll !SOURCES! "%ROOT%tests\JojIntegrationTests.cs"
+dotnet build "%PROJECT%" --configuration Release --nologo --verbosity minimal
 if errorlevel 1 exit /b 1
 
-"%TEST_EXE%"
+pushd "%ROOT%"
+dotnet run --project "%PROJECT%" --configuration Release --no-build --no-restore
 set "RESULT=%ERRORLEVEL%"
-del /Q "%TEST_EXE%" >nul 2>nul
+popd
 exit /b %RESULT%

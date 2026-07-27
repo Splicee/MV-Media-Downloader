@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <RootNamespace>MVMediaStudio</RootNamespace>
+    <AssemblyName>MV Media Downloader</AssemblyName>
+    <ApplicationIcon>..\..\assets\MVMediaStudio.ico</ApplicationIcon>
+    <ApplicationManifest>..\app.manifest</ApplicationManifest>
+    <StartupObject>MVMediaStudio.App</StartupObject>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultPageItems>false</EnableDefaultPageItems>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Version>3.3.0</Version>
+    <AssemblyVersion>3.3.0.0</AssemblyVersion>
+    <FileVersion>3.3.0.0</FileVersion>
+    <Authors>MV</Authors>
+    <Company>MV</Company>
+    <Product>MV Media Downloader</Product>
+    <Description>Stahování a konverze médií</Description>
+    <Copyright>Copyright © MV 2026</Copyright>
+    <PublishSingleFile>false</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml" />
+    <Page Include="Dialogs\ReportReadyDialog.xaml" />
+    <Page Include="Dialogs\SourceSupportDialog.xaml" />
+    <Page Include="Dialogs\WebshareLoginDialog.xaml" />
+    <Page Include="MainWindow.xaml" />
+    <Page Include="Themes\Controls.xaml" />
+    <Page Include="Views\ConversionView.xaml" />
+    <Page Include="Views\DownloadView.xaml" />
+    <Compile Include="App.xaml.cs">
+      <DependentUpon>App.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Views\ConversionView.xaml.cs">
+      <DependentUpon>ConversionView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\DownloadView.xaml.cs">
+      <DependentUpon>DownloadView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\MainWindow.cs" Link="MainWindow.cs" />
+    <Compile Include="..\MainWindow.*.cs" Link="%(Filename)%(Extension)" />
+    <Compile Include="..\Core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\Services\**\*.cs" Link="Services\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\UI\**\*.cs" Link="UI\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\yt-dlp-plugins\**\*" Link="yt-dlp-plugins\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

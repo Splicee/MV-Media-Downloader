@@ -9,7 +9,7 @@ using MVMediaStudio.UI;
 
 namespace MVMediaStudio
 {
-    internal partial class MainWindow
+    public partial class MainWindow
     {
         private void SaveProblemReport(string area, string log)
         {

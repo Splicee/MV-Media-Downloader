@@ -17,8 +17,7 @@ namespace MVMediaStudio.Core
         public static readonly string ConversionLogPath = Path.Combine(LogDirectory, "conversion.log");
         public static readonly string ErrorLogPath = Path.Combine(LogDirectory, "errors.log");
         public static readonly string UpdateDirectory = Path.Combine(DataDirectory, "updates");
-        public static readonly string DefaultDownloadDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "MV Media Downloader");
+        public static readonly string DefaultDownloadDirectory = SelectDefaultDownloadDirectory();
 
         public static string ExecutableDirectory
         {
@@ -53,6 +52,9 @@ namespace MVMediaStudio.Core
         private static string SelectDataDirectory()
         {
             List<string> candidates = new List<string>();
+            string configured = Environment.GetEnvironmentVariable("MV_MEDIA_DOWNLOADER_DATA_DIR");
+            if (!string.IsNullOrWhiteSpace(configured))
+                candidates.Add(Path.GetFullPath(configured));
             string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             if (!string.IsNullOrWhiteSpace(local))
                 candidates.Add(Path.Combine(local, "MV", "MediaDownloader"));
@@ -75,6 +77,17 @@ namespace MVMediaStudio.Core
             }
 
             return Path.Combine(Path.GetTempPath(), "MVMediaDownloader");
+        }
+
+        private static string SelectDefaultDownloadDirectory()
+        {
+            if (!string.IsNullOrWhiteSpace(
+                Environment.GetEnvironmentVariable("MV_MEDIA_DOWNLOADER_DATA_DIR")))
+                return Path.Combine(DataDirectory, "downloads");
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "Downloads",
+                "MV Media Downloader");
         }
     }
 }

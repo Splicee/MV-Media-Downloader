@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,7 +14,9 @@ namespace MVMediaStudio.Services
 {
     internal static class DirectDownloadService
     {
-        public static Task<string> DownloadAsync(
+        private static readonly HttpClient Client = CreateClient();
+
+        public static async Task<string> DownloadAsync(
             DirectDownloadItem item,
             string outputDirectory,
             bool noOverwrite,
@@ -20,30 +24,44 @@ namespace MVMediaStudio.Services
             Action<DirectDownloadProgress> progress,
             CancellationToken cancellationToken)
         {
-            return Task.Run(delegate
+            Directory.CreateDirectory(outputDirectory);
+            string safeName = SafeFileName(item.FileName);
+            string finalPath = UniquePath(outputDirectory, safeName, noOverwrite);
+            if (noOverwrite && File.Exists(finalPath))
             {
-                Directory.CreateDirectory(outputDirectory);
-                string safeName = SafeFileName(item.FileName);
-                string finalPath = UniquePath(outputDirectory, safeName, noOverwrite);
-                if (noOverwrite && File.Exists(finalPath))
-                {
-                    Report(progress, item, finalPath, new FileInfo(finalPath).Length, new FileInfo(finalPath).Length, 0, true, true, false);
-                    return finalPath;
-                }
+                long existingSize = new FileInfo(finalPath).Length;
+                Report(progress, item, finalPath, existingSize, existingSize, 0, true, true, false);
+                return finalPath;
+            }
 
-                string partPath = finalPath + ".part";
-                long existing = File.Exists(partPath) ? new FileInfo(partPath).Length : 0;
-                HttpWebRequest request = CreateRequest(item.DownloadUrl, existing);
-                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+            string partPath = finalPath + ".part";
+            long existing = File.Exists(partPath) ? new FileInfo(partPath).Length : 0;
+            using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, item.DownloadUrl))
+            {
+                request.Headers.UserAgent.ParseAdd(AppInfo.UserAgent);
+                if (existing > 0)
+                    request.Headers.Range = new RangeHeaderValue(existing, null);
+
+                using (HttpResponseMessage response = await Client.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken).ConfigureAwait(false))
                 {
+                    response.EnsureSuccessStatusCode();
                     bool resumed = existing > 0 && response.StatusCode == HttpStatusCode.PartialContent;
                     if (!resumed)
                         existing = 0;
-                    long responseLength = response.ContentLength;
+                    long responseLength = response.Content.Headers.ContentLength ?? -1;
                     long total = responseLength > 0 ? existing + responseLength : item.ExpectedSize;
                     FileMode mode = resumed ? FileMode.Append : FileMode.Create;
-                    using (Stream input = response.GetResponseStream())
-                    using (FileStream output = new FileStream(partPath, mode, FileAccess.Write, FileShare.Read, 65536, FileOptions.SequentialScan))
+                    using (Stream input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
+                    using (FileStream output = new FileStream(
+                        partPath,
+                        mode,
+                        FileAccess.Write,
+                        FileShare.Read,
+                        65536,
+                        FileOptions.Asynchronous | FileOptions.SequentialScan))
                     {
                         byte[] buffer = new byte[65536];
                         long received = existing;
@@ -53,11 +71,18 @@ namespace MVMediaStudio.Services
                         Stopwatch reportWatch = Stopwatch.StartNew();
                         while (true)
                         {
-                            cancellationToken.ThrowIfCancellationRequested();
-                            int read = input.Read(buffer, 0, buffer.Length);
+                            int read = await input.ReadAsync(
+                                buffer,
+                                0,
+                                buffer.Length,
+                                cancellationToken).ConfigureAwait(false);
                             if (read <= 0)
                                 break;
-                            output.Write(buffer, 0, read);
+                            await output.WriteAsync(
+                                buffer,
+                                0,
+                                read,
+                                cancellationToken).ConfigureAwait(false);
                             received += read;
                             windowBytes += read;
 
@@ -68,43 +93,54 @@ namespace MVMediaStudio.Services
                                 windowBytes = 0;
                                 speedWatch.Restart();
                             }
-                            Throttle(windowBytes, activeLimit, speedWatch, cancellationToken);
+                            await ThrottleAsync(
+                                windowBytes,
+                                activeLimit,
+                                speedWatch,
+                                cancellationToken).ConfigureAwait(false);
 
                             if (reportWatch.ElapsedMilliseconds >= 250)
                             {
-                                double speed = speedWatch.Elapsed.TotalSeconds > 0 ? windowBytes / speedWatch.Elapsed.TotalSeconds : 0;
+                                double speed = speedWatch.Elapsed.TotalSeconds > 0
+                                    ? windowBytes / speedWatch.Elapsed.TotalSeconds
+                                    : 0;
                                 Report(progress, item, finalPath, received, total, speed, false, false, resumed);
                                 reportWatch.Restart();
                             }
                         }
+                        await output.FlushAsync(cancellationToken).ConfigureAwait(false);
                         output.Flush(true);
                     }
                 }
+            }
 
-                if (File.Exists(finalPath))
-                    File.Delete(finalPath);
-                File.Move(partPath, finalPath);
-                long size = new FileInfo(finalPath).Length;
-                Report(progress, item, finalPath, size, size, 0, true, false, existing > 0);
-                return finalPath;
-            }, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (File.Exists(finalPath))
+                File.Delete(finalPath);
+            File.Move(partPath, finalPath);
+            long size = new FileInfo(finalPath).Length;
+            Report(progress, item, finalPath, size, size, 0, true, false, existing > 0);
+            return finalPath;
         }
 
-        private static HttpWebRequest CreateRequest(string url, long existing)
+        private static HttpClient CreateClient()
         {
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-            request.Method = "GET";
-            request.UserAgent = AppInfo.UserAgent;
-            request.AllowAutoRedirect = true;
-            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
-            request.Timeout = 30000;
-            request.ReadWriteTimeout = 30000;
-            if (existing > 0)
-                request.AddRange(existing);
-            return request;
+            HttpClientHandler handler = new HttpClientHandler
+            {
+                AllowAutoRedirect = true,
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            };
+            return new HttpClient(handler)
+            {
+                Timeout = Timeout.InfiniteTimeSpan
+            };
         }
 
-        private static void Throttle(long bytes, long limit, Stopwatch watch, CancellationToken cancellationToken)
+        private static async Task ThrottleAsync(
+            long bytes,
+            long limit,
+            Stopwatch watch,
+            CancellationToken cancellationToken)
         {
             if (limit <= 0 || bytes <= 0)
                 return;
@@ -114,7 +150,7 @@ namespace MVMediaStudio.Services
                 cancellationToken.ThrowIfCancellationRequested();
                 int delay = (int)Math.Min(200, expectedMilliseconds - watch.Elapsed.TotalMilliseconds);
                 if (delay > 0)
-                    Thread.Sleep(delay);
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                 else
                     break;
             }

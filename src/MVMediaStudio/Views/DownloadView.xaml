@@ -1,0 +1,479 @@
+<UserControl
+    x:Class="MVMediaStudio.Views.DownloadView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="clr-namespace:MVMediaStudio.UI"
+    d:DesignHeight="900"
+    d:DesignWidth="1360"
+    mc:Ignorable="d">
+    <Grid>
+        <ScrollViewer
+            x:Name="PageScroll"
+            HorizontalContentAlignment="Stretch"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto">
+            <StackPanel
+                x:Name="DownloadContent"
+                MaxWidth="1560"
+                Margin="32,28,32,34"
+                HorizontalAlignment="Stretch">
+                <Grid Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource PageTitleStyle}" Text="Stáhnout média" />
+                        <TextBlock
+                            Margin="0,5,0,0"
+                            FontSize="13"
+                            Foreground="{DynamicResource Muted}"
+                            Text="Vlož odkaz, zvol výsledek a zbytek vyřeší aplikace."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Border
+                        Grid.Column="1"
+                        Padding="11,7"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource SurfaceAlt}"
+                        CornerRadius="6">
+                        <TextBlock
+                            FontSize="11.5"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource Success}"
+                            Text="H.264 · kompatibilní výchozí nastavení" />
+                    </Border>
+                </Grid>
+
+                <Grid x:Name="DownloadWorkspace">
+                    <Border
+                        x:Name="DownloadLinkCard"
+                        Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,13">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Odkazy ke stažení" />
+                                    <TextBlock
+                                        Margin="0,3,0,0"
+                                        Style="{StaticResource MutedTextStyle}"
+                                        Text="Jeden odkaz na řádek. Před odkazem může být číslo, například 01 https://…" />
+                                    <TextBlock
+                                        x:Name="DownloadSourceSummary"
+                                        Margin="0,4,0,0"
+                                        FontSize="11.5"
+                                        Foreground="{DynamicResource Primary}"
+                                        Text="Zdroj rozpoznám automaticky."
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        x:Name="DownloadSourceHint"
+                                        Margin="0,3,0,0"
+                                        FontSize="11"
+                                        Foreground="{DynamicResource Warning}"
+                                        TextWrapping="Wrap"
+                                        Visibility="Collapsed" />
+                                </StackPanel>
+                                <TextBlock
+                                    x:Name="DownloadUrlCount"
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    FontSize="11.5"
+                                    FontWeight="SemiBold"
+                                    Foreground="{DynamicResource Muted}"
+                                    Text="0 odkazů" />
+                            </Grid>
+
+                            <Grid x:Name="DownloadUrlInputHost" Height="122">
+                                <TextBox
+                                    x:Name="DownloadUrlBox"
+                                    Padding="13,12"
+                                    AcceptsReturn="True"
+                                    AllowDrop="True"
+                                    TextWrapping="Wrap"
+                                    VerticalScrollBarVisibility="Auto" />
+                                <TextBlock
+                                    x:Name="DownloadPlaceholder"
+                                    Margin="14,13,14,0"
+                                    VerticalAlignment="Top"
+                                    FontSize="13"
+                                    Foreground="{DynamicResource Muted}"
+                                    IsHitTestVisible="False"
+                                    Text="YouTube, ČT, Nova, Stream.cz, Český rozhlas, TV Noe, JOJ nebo další web…"
+                                    TextWrapping="Wrap" />
+                            </Grid>
+
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="PasteButton">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontFamily="Segoe MDL2 Assets"
+                                                FontSize="14"
+                                                Text="&#xE77F;" />
+                                            <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Vložit ze schránky" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button x:Name="ClearButton" Margin="8,0,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontFamily="Segoe MDL2 Assets"
+                                                FontSize="14"
+                                                Text="&#xE74D;" />
+                                            <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Vymazat" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                                <Button x:Name="SupportedSourcesButton" Grid.Column="1">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            FontSize="14"
+                                            Text="&#xE946;" />
+                                        <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Podporované weby" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border
+                        x:Name="DownloadSettingsCard"
+                        Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Výsledek" />
+                            <ui:AdaptiveGrid
+                                Margin="0,16,0,0"
+                                ColumnSpacing="12"
+                                ItemMinWidth="300"
+                                MaximumColumns="4"
+                                RowSpacing="14">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="TYP SOUBORU" />
+                                    <ComboBox
+                                        x:Name="DownloadFormatCombo"
+                                        ToolTip="U Webshare a přímých souborů se výsledek po stažení připraví přes FFmpeg." />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="KVALITA" />
+                                    <ComboBox
+                                        x:Name="DownloadQualityCombo"
+                                        ToolTip="Vyšší video zůstane zachované nebo se zmenší na zvolenou maximální výšku." />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="RYCHLOST STAHOVÁNÍ" />
+                                    <StackPanel>
+                                        <CheckBox
+                                            x:Name="DownloadLimitEnabledCheck"
+                                            VerticalAlignment="Center"
+                                            Content="Omezit rychlost" />
+                                        <Grid
+                                            x:Name="DownloadRateEditor"
+                                            MinWidth="190"
+                                            Margin="0,8,0,0"
+                                            HorizontalAlignment="Left">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid>
+                                                <TextBox
+                                                    x:Name="DownloadRateValueBox"
+                                                    MinHeight="38"
+                                                    Padding="12,9,49,9"
+                                                    VerticalContentAlignment="Center"
+                                                    ToolTip="3000 KB/s odpovídá přibližně 3 MiB/s" />
+                                                <TextBlock
+                                                    Margin="0,0,10,0"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Center"
+                                                    FontSize="11.5"
+                                                    Foreground="{DynamicResource Muted}"
+                                                    IsHitTestVisible="False"
+                                                    Text="KB/s" />
+                                            </Grid>
+                                            <Button
+                                                x:Name="DownloadApplyRateButton"
+                                                Grid.Column="1"
+                                                Width="40"
+                                                MinWidth="40"
+                                                MinHeight="38"
+                                                Margin="6,0,0,0"
+                                                Padding="0"
+                                                ToolTip="Potvrdit limit rychlosti (Enter)">
+                                                <TextBlock
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    FontFamily="Segoe MDL2 Assets"
+                                                    FontSize="13"
+                                                    FontWeight="SemiBold"
+                                                    Text="&#xE73E;" />
+                                            </Button>
+                                        </Grid>
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="CÍLOVÁ SLOŽKA" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox
+                                            x:Name="DownloadFolderBox"
+                                            MinHeight="38"
+                                            IsReadOnly="True"
+                                            VerticalContentAlignment="Center" />
+                                        <Button
+                                            x:Name="BrowseDownloadFolderButton"
+                                            Grid.Column="1"
+                                            Margin="8,0,0,0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock
+                                                    VerticalAlignment="Center"
+                                                    FontFamily="Segoe MDL2 Assets"
+                                                    FontSize="14"
+                                                    Text="&#xE8B7;" />
+                                                <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Vybrat" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button
+                                            x:Name="OpenDownloadFolderButton"
+                                            Grid.Column="2"
+                                            Margin="6,0,0,0"
+                                            Style="{StaticResource IconButtonStyle}"
+                                            ToolTip="Otevřít výstupní složku">
+                                            <TextBlock
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                FontFamily="Segoe MDL2 Assets"
+                                                FontSize="16"
+                                                Text="&#xE838;" />
+                                        </Button>
+                                    </Grid>
+                                </StackPanel>
+                            </ui:AdaptiveGrid>
+
+                            <ui:AdaptiveGrid
+                                Margin="0,18,0,0"
+                                ColumnSpacing="14"
+                                ItemMinWidth="430"
+                                MaximumColumns="2"
+                                RowSpacing="12">
+                                <WrapPanel VerticalAlignment="Center">
+                                    <CheckBox x:Name="DownloadSubtitlesCheck" Content="Titulky CS/EN" />
+                                    <CheckBox x:Name="DownloadPlaylistCheck" Content="Celý playlist" />
+                                    <CheckBox x:Name="DownloadNoOverwriteCheck" Content="Nepřepisovat existující" />
+                                    <StackPanel Margin="0,7,18,0" Orientation="Horizontal">
+                                        <CheckBox
+                                            x:Name="DownloadCookiesCheck"
+                                            Margin="0,0,8,0"
+                                            VerticalAlignment="Center"
+                                            Content="Přihlášení z prohlížeče" />
+                                        <ComboBox
+                                            x:Name="DownloadCookieBrowserCombo"
+                                            MinWidth="125"
+                                            ToolTip="Vyber prohlížeč, ve kterém jsi na daném webu přihlášený." />
+                                    </StackPanel>
+                                </WrapPanel>
+                                <WrapPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <Button
+                                        x:Name="WebshareLoginButton"
+                                        VerticalAlignment="Center"
+                                        ToolTip="Přihlášení přes oficiální Webshare API" />
+                                    <Button
+                                        x:Name="JojLoginButton"
+                                        Margin="12,0,0,0"
+                                        VerticalAlignment="Center"
+                                        ToolTip="Otevře oddělený Chrome profil používaný pouze pro JOJ Play">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontFamily="Segoe MDL2 Assets"
+                                                FontSize="14"
+                                                Text="&#xE77B;" />
+                                            <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Přihlásit JOJ Play" />
+                                        </StackPanel>
+                                    </Button>
+                                </WrapPanel>
+                            </ui:AdaptiveGrid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <Border
+                    x:Name="DownloadAdvancedPanel"
+                    Margin="0,14,0,0"
+                    Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SmallHeadingStyle}" Text="Pokročilé argumenty yt-dlp" />
+                        <TextBlock
+                            Margin="0,3,0,10"
+                            Style="{StaticResource MutedTextStyle}"
+                            Text="Volitelné. Používej jen parametry, kterým rozumíš." />
+                        <TextBox x:Name="DownloadExtraArgsBox" MinHeight="40" />
+                    </StackPanel>
+                </Border>
+
+                <Grid Margin="0,18,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button
+                        x:Name="DownloadStartButton"
+                        MinWidth="150"
+                        Style="{StaticResource PrimaryButtonStyle}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe MDL2 Assets"
+                                FontSize="14"
+                                Text="&#xE896;" />
+                            <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Stáhnout" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="DownloadCancelButton" Grid.Column="1" Margin="8,0,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe MDL2 Assets"
+                                FontSize="14"
+                                Text="&#xE71A;" />
+                            <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Zrušit" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="DownloadReportButton"
+                        Grid.Column="3"
+                        Margin="0,0,8,0"
+                        Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe MDL2 Assets"
+                                FontSize="14"
+                                Text="&#xE8BD;" />
+                            <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Nahlásit chybu" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="DownloadLogToggle" Grid.Column="4">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe MDL2 Assets"
+                                FontSize="14"
+                                Text="&#xE756;" />
+                            <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Zobrazit log" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+
+                <Border
+                    Margin="0,14,0,0"
+                    Style="{StaticResource CardStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                x:Name="DownloadStatusTitle"
+                                Style="{StaticResource SmallHeadingStyle}"
+                                Text="Připraveno ke stažení" />
+                            <TextBlock
+                                x:Name="DownloadProgressPercent"
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                FontSize="17"
+                                FontWeight="SemiBold"
+                                Foreground="{DynamicResource Primary}"
+                                Text="0 %" />
+                        </Grid>
+                        <TextBlock
+                            x:Name="DownloadCurrentItem"
+                            Grid.Row="1"
+                            Margin="0,7,0,0"
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource Text}"
+                            TextTrimming="CharacterEllipsis"
+                            Visibility="Collapsed" />
+                        <TextBlock
+                            x:Name="DownloadStatusDetail"
+                            Grid.Row="2"
+                            Margin="0,4,0,12"
+                            Style="{StaticResource MutedTextStyle}"
+                            Text="Čekám na odkaz." />
+                        <ProgressBar
+                            x:Name="DownloadProgress"
+                            Grid.Row="3"
+                            Maximum="100"
+                            Minimum="0"
+                            Value="0" />
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="DownloadLogCard"
+                    Margin="0,14,0,0"
+                    Style="{StaticResource CardStyle}"
+                    Visibility="Collapsed">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,10">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Style="{StaticResource SmallHeadingStyle}"
+                                Text="Technický log" />
+                            <Button
+                                x:Name="DownloadCopyLogButton"
+                                MinHeight="34"
+                                Padding="11,6"
+                                HorizontalAlignment="Right"
+                                ToolTip="Zkopírovat celý log do schránky">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        FontFamily="Segoe MDL2 Assets"
+                                        FontSize="13"
+                                        Text="&#xE8C8;" />
+                                    <TextBlock Margin="7,0,0,0" VerticalAlignment="Center" Text="Kopírovat" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                        <TextBox
+                            x:Name="DownloadLogBox"
+                            MaxHeight="260"
+                            AcceptsReturn="True"
+                            IsReadOnly="True"
+                            IsUndoEnabled="False"
+                            SpellCheck.IsEnabled="False"
+                            Style="{StaticResource ConsoleTextBoxStyle}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

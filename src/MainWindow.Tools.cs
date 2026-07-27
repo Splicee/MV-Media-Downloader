@@ -10,63 +10,44 @@ using MVMediaStudio.UI;
 
 namespace MVMediaStudio
 {
-    internal partial class MainWindow
+    public partial class MainWindow
     {
-        private ContextMenu BuildRepairMenu()
+        private void InitializeRepairMenu()
         {
-            ContextMenu menu = new ContextMenu { MinWidth = 285 };
-            MenuItem check = new MenuItem { Header = "Zkontrolovat nástroje" };
-            check.Click += async delegate { await RefreshToolsAsync(true); };
-            menu.Items.Add(check);
+            advancedMenuItem = AdvancedMenuItem;
+            themeMenuItem = ThemeMenuItem;
+            autoUpdateMenuItem = AutoUpdateMenuItem;
+            advancedMenuItem.IsChecked = settings.AdvancedMode;
+            autoUpdateMenuItem.IsChecked = settings.AutoUpdate;
+            themeMenuItem.Header = IsDark ? "Světlý režim" : "Tmavý režim";
 
-            MenuItem sources = new MenuItem { Header = "Podporované weby" };
-            sources.Click += delegate { new SourceSupportDialog(this).ShowDialog(); };
-            menu.Items.Add(sources);
-            menu.Items.Add(new Separator());
-
-            MenuItem ytDlp = new MenuItem { Header = "Stáhnout / aktualizovat yt-dlp" };
-            ytDlp.Click += async delegate { await InstallToolAsync("yt-dlp", toolService.InstallYtDlpAsync); };
-            menu.Items.Add(ytDlp);
-
-            MenuItem ffmpeg = new MenuItem { Header = "Stáhnout / opravit FFmpeg" };
-            ffmpeg.Click += async delegate { await InstallToolAsync("FFmpeg", toolService.InstallFfmpegAsync); };
-            menu.Items.Add(ffmpeg);
-
-            MenuItem deno = new MenuItem { Header = "Stáhnout / opravit JS runtime (Deno)" };
-            deno.Click += async delegate { await InstallToolAsync("Deno", toolService.InstallDenoAsync); };
-            menu.Items.Add(deno);
-
-            MenuItem selectYtDlp = new MenuItem { Header = "Vybrat existující yt-dlp.exe" };
-            selectYtDlp.Click += async delegate { await ImportYtDlpAsync(); };
-            menu.Items.Add(selectYtDlp);
-            menu.Items.Add(new Separator());
-
-            MenuItem checkUpdate = new MenuItem { Header = "Zkontrolovat aktualizace aplikace" };
-            checkUpdate.Click += async delegate { await CheckForUpdatesAsync(true); };
-            menu.Items.Add(checkUpdate);
-
-            autoUpdateMenuItem = new MenuItem { Header = "Automaticky kontrolovat aktualizace", IsCheckable = true, IsChecked = settings.AutoUpdate };
+            CheckToolsMenuItem.Click += async delegate { await RefreshToolsAsync(true); };
+            SupportedSourcesMenuItem.Click += delegate
+            {
+                new SourceSupportDialog(this).ShowDialog();
+            };
+            InstallYtDlpMenuItem.Click += async delegate
+            {
+                await InstallToolAsync("yt-dlp", toolService.InstallYtDlpAsync);
+            };
+            InstallFfmpegMenuItem.Click += async delegate
+            {
+                await InstallToolAsync("FFmpeg", toolService.InstallFfmpegAsync);
+            };
+            InstallDenoMenuItem.Click += async delegate
+            {
+                await InstallToolAsync("Deno", toolService.InstallDenoAsync);
+            };
+            ImportYtDlpMenuItem.Click += async delegate { await ImportYtDlpAsync(); };
+            CheckUpdateMenuItem.Click += async delegate { await CheckForUpdatesAsync(true); };
             autoUpdateMenuItem.Click += delegate
             {
                 settings.AutoUpdate = autoUpdateMenuItem.IsChecked;
                 settings.Save();
             };
-            menu.Items.Add(autoUpdateMenuItem);
-            menu.Items.Add(new Separator());
-
-            advancedMenuItem = new MenuItem { Header = "Pokročilé zobrazení", IsCheckable = true, IsChecked = settings.AdvancedMode };
             advancedMenuItem.Click += delegate { ToggleAdvanced(); };
-            menu.Items.Add(advancedMenuItem);
-
-            themeMenuItem = new MenuItem { Header = IsDark ? "Světlý režim" : "Tmavý režim" };
             themeMenuItem.Click += delegate { ToggleTheme(); };
-            menu.Items.Add(themeMenuItem);
-            menu.Items.Add(new Separator());
-
-            MenuItem openData = new MenuItem { Header = "Otevřít data a logy" };
-            openData.Click += delegate { OpenDirectory(AppPaths.DataDirectory); };
-            menu.Items.Add(openData);
-            return menu;
+            OpenDataMenuItem.Click += delegate { OpenDirectory(AppPaths.DataDirectory); };
         }
 
         private async Task RefreshToolsAsync(bool announce)

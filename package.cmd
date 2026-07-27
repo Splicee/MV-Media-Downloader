@@ -1,5 +1,6 @@
 @echo off
 setlocal EnableExtensions
+chcp 65001 >nul
 
 set "ROOT=%~dp0"
 set "PACKAGE=%ROOT%release\MV-Media-Downloader-win-x64.zip"

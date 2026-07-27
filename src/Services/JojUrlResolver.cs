@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Text;
+using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using MVMediaStudio.Core;
@@ -16,6 +16,7 @@ namespace MVMediaStudio.Services
 
     internal static class JojUrlResolver
     {
+        private static readonly HttpClient Client = CreateClient();
         private static readonly Regex MediaUrlPattern = new Regex(
             @"(?:https?:)?//media\.joj\.sk/embed/[A-Za-z0-9_-]+",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -87,35 +88,31 @@ namespace MVMediaStudio.Services
             return match.Value.StartsWith("//", StringComparison.Ordinal) ? "https:" + match.Value : match.Value;
         }
 
-        private static Task<string> DownloadPageAsync(string url)
+        private static async Task<string> DownloadPageAsync(string url)
         {
-            return Task.Run(delegate
+            using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url))
             {
-                ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
-                using (JojWebClient client = new JojWebClient())
+                request.Headers.UserAgent.ParseAdd(AppInfo.BrowserUserAgent);
+                request.Headers.Accept.ParseAdd("text/html");
+                request.Headers.Accept.ParseAdd("application/xhtml+xml");
+                using (HttpResponseMessage response = await Client.SendAsync(request).ConfigureAwait(false))
                 {
-                    client.Encoding = Encoding.UTF8;
-                    client.Headers[HttpRequestHeader.UserAgent] = AppInfo.BrowserUserAgent;
-                    client.Headers[HttpRequestHeader.Accept] = "text/html,application/xhtml+xml";
-                    return client.DownloadString(url);
+                    response.EnsureSuccessStatusCode();
+                    return await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 }
-            });
+            }
         }
 
-        private sealed class JojWebClient : WebClient
+        private static HttpClient CreateClient()
         {
-            protected override WebRequest GetWebRequest(Uri address)
+            HttpClientHandler handler = new HttpClientHandler
             {
-                WebRequest request = base.GetWebRequest(address);
-                request.Timeout = 15000;
-                HttpWebRequest http = request as HttpWebRequest;
-                if (http != null)
-                {
-                    http.ReadWriteTimeout = 15000;
-                    http.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
-                }
-                return request;
-            }
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            };
+            return new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromSeconds(15)
+            };
         }
     }
 }

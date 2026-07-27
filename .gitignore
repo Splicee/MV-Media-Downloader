@@ -2,6 +2,9 @@ dist/
 release/
 artifacts/
 .publish-tools/
+bin/
+obj/
+.vs/
 data/
 joj-chrome-profile/
 settings.ini

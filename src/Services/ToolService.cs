@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -14,17 +14,13 @@ namespace MVMediaStudio.Services
 {
     internal sealed class ToolService
     {
+        private static readonly HttpClient Client = CreateClient();
         private const string YtDlpUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
         private const string YtDlpChecksumsUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
         private const string FfmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
         private const string FfmpegChecksumUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip.sha256";
         private const string DenoUrl = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip";
         private const string DenoChecksumUrl = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip.sha256sum";
-
-        public ToolService()
-        {
-            ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
-        }
 
         public ToolState Check()
         {
@@ -122,28 +118,58 @@ namespace MVMediaStudio.Services
 
         private static async Task DownloadFileAsync(string url, string target, Action<double, string> progress, string label)
         {
-            using (WebClient client = new WebClient())
+            using (HttpResponseMessage response = await Client.GetAsync(
+                url,
+                HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false))
             {
-                client.Headers.Add(HttpRequestHeader.UserAgent, AppInfo.UserAgent);
+                response.EnsureSuccessStatusCode();
+                long total = response.Content.Headers.ContentLength ?? -1;
                 int lastPercentage = -1;
-                client.DownloadProgressChanged += delegate(object sender, DownloadProgressChangedEventArgs eventArgs)
+                using (Stream input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                using (FileStream output = new FileStream(
+                    target,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.None,
+                    65536,
+                    FileOptions.Asynchronous | FileOptions.SequentialScan))
                 {
-                    if (eventArgs.ProgressPercentage == lastPercentage)
-                        return;
-                    lastPercentage = eventArgs.ProgressPercentage;
-                    Report(progress, Math.Min(90, eventArgs.ProgressPercentage * 0.9), "Stahuji " + label + "…");
-                };
-                await client.DownloadFileTaskAsync(new Uri(url), target);
+                    byte[] buffer = new byte[65536];
+                    long received = 0;
+                    int read;
+                    while ((read = await input.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
+                    {
+                        await output.WriteAsync(buffer, 0, read).ConfigureAwait(false);
+                        received += read;
+                        if (total <= 0)
+                            continue;
+                        int percentage = (int)Math.Min(100, received * 100L / total);
+                        if (percentage == lastPercentage)
+                            continue;
+                        lastPercentage = percentage;
+                        Report(progress, Math.Min(90, percentage * 0.9), "Stahuji " + label + "…");
+                    }
+                }
             }
         }
 
         private static async Task<string> DownloadTextAsync(string url)
         {
-            using (WebClient client = new WebClient())
+            using (HttpResponseMessage response = await Client.GetAsync(url).ConfigureAwait(false))
             {
-                client.Headers.Add(HttpRequestHeader.UserAgent, AppInfo.UserAgent);
-                return await client.DownloadStringTaskAsync(new Uri(url));
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             }
+        }
+
+        private static HttpClient CreateClient()
+        {
+            HttpClient client = new HttpClient
+            {
+                Timeout = TimeSpan.FromMinutes(10)
+            };
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(AppInfo.UserAgent);
+            return client;
         }
 
         private static void ExtractExecutables(string archivePath, IEnumerable<string> names)

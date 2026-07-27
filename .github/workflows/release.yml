@@ -7,12 +7,16 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag vydání, například v3.0.0
+        description: Tag vydání, například v3.3.0
         required: true
         type: string
 
 permissions:
   contents: write
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
 
 jobs:
   release:
@@ -21,17 +25,24 @@ jobs:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v6
-      - name: Aktuální yt-dlp
-        shell: powershell
-        run: ./tools/update-ytdlp.ps1
-      - name: Testy
-        shell: cmd
-        run: test.cmd
+      - name: Nastavit .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Obnovit
+        run: dotnet restore "MV Media Downloader.sln"
+      - name: Sestavit
+        run: dotnet build "MV Media Downloader.sln" --configuration Release --no-restore
+      - name: Funkční testy
+        run: dotnet run --project "tests/MVMediaStudio.Tests/MVMediaStudio.Tests.csproj" --configuration Release --no-build --no-restore
+      - name: Self-test aktualizátoru
+        run: dotnet run --project "updater/MVMediaStudio.Updater/MVMediaStudio.Updater.csproj" --configuration Release --no-build --no-restore -- --self-test
+      - name: XAML a motivy
+        run: dotnet run --project "tests/MVMediaStudio.UiSmoke/MVMediaStudio.UiSmoke.csproj" --configuration Release --no-build --no-restore
       - name: Balíček
-        shell: cmd
-        run: package.cmd
+        run: dotnet publish "packaging/MVMediaStudio.Distribution/MVMediaStudio.Distribution.csproj" --configuration Release --no-restore
       - name: GitHub Release
-        shell: powershell
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

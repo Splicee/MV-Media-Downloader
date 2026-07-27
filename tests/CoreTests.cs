@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Threading;
 using MVMediaStudio.Core;
 using MVMediaStudio.Services;
 
@@ -12,11 +14,19 @@ namespace MVMediaStudio.Tests
     {
         private static int failures;
 
-        public static int Main()
+        public static int Main(string[] arguments)
         {
+            if (arguments.Length == 1 && arguments[0] == "--unicode-output-helper")
+                return WriteUnicodeProcessOutput();
+
+            int helperResult;
+            if (DownloadControlTests.TryRunHelper(arguments, out helperResult))
+                return helperResult;
+
             Equal("abc", ArgumentUtilities.Quote("abc"), "jednoduchý argument");
             Equal("\"a b\"", ArgumentUtilities.Quote("a b"), "argument s mezerou");
             TestDownloadUrlParser();
+            TestDownloadOutputParser();
             TestScrollWheel();
             TestDownloadPreset();
             TestDirectPostProcessing();
@@ -26,8 +36,66 @@ namespace MVMediaStudio.Tests
             TestConversion();
             TestMediaFileSupport();
             TestUpdateMetadata();
+            TestUnicodeProcessOutput();
+            failures += DownloadControlTests.Run();
             Console.WriteLine(failures == 0 ? "Všechny testy prošly." : "Počet chyb: " + failures);
             return failures == 0 ? 0 : 1;
+        }
+
+        private static int WriteUnicodeProcessOutput()
+        {
+            UTF8Encoding utf8 = new UTF8Encoding(false);
+            using (StreamWriter output = new StreamWriter(Console.OpenStandardOutput(), utf8))
+            using (StreamWriter error = new StreamWriter(Console.OpenStandardError(), utf8))
+            {
+                output.AutoFlush = true;
+                error.AutoFlush = true;
+                output.WriteLine("STDOUT:Příliš žluťoučký kůň ščěř");
+                output.WriteLine(
+                    "ENV:" +
+                    Environment.GetEnvironmentVariable("PYTHONUTF8") + "|" +
+                    Environment.GetEnvironmentVariable("PYTHONIOENCODING"));
+                error.WriteLine("STDERR:Čeština zůstává čitelná");
+            }
+            return 0;
+        }
+
+        private static void TestUnicodeProcessOutput()
+        {
+            List<string> standardOutput = new List<string>();
+            List<string> standardError = new List<string>();
+            object sync = new object();
+            int exitCode = ProcessService.RunAsync(
+                Environment.ProcessPath,
+                new[] { "--unicode-output-helper" },
+                delegate (string line, bool isError)
+                {
+                    lock (sync)
+                    {
+                        (isError ? standardError : standardOutput).Add(line);
+                    }
+                },
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            Equal("0", exitCode.ToString(), "UTF-8 pomocný proces skončí úspěšně");
+            True(standardOutput.Contains("STDOUT:Příliš žluťoučký kůň ščěř"), "log zachová české znaky ze standardního výstupu");
+            True(standardError.Contains("STDERR:Čeština zůstává čitelná"), "log zachová české znaky z chybového výstupu");
+            True(standardOutput.Contains("ENV:1|utf-8"), "procesy dostanou vynucené UTF-8 prostředí");
+        }
+
+        private static void TestDownloadOutputParser()
+        {
+            string itemName;
+            True(
+                DownloadOutputParser.TryReadCurrentItem("MV_ITEM:Příliš žluťoučký kůň ščěř", out itemName),
+                "název aktuální položky se rozpozná");
+            Equal("Příliš žluťoučký kůň ščěř", itemName, "název aktuální položky zachová diakritiku");
+            True(
+                DownloadOutputParser.TryReadCurrentItem(
+                    "[download] Destination: C:\\Videa\\Český pořad [abc123].mp4",
+                    out itemName),
+                "název lze záložně načíst z cílové cesty");
+            Equal("Český pořad [abc123]", itemName, "cílová cesta se zobrazí bez přípony");
         }
 
         private static void TestScrollWheel()
@@ -125,6 +193,9 @@ namespace MVMediaStudio.Tests
                 CookieBrowserSpec = "chrome:C:\\JOJ\\Default"
             };
             args = DownloadArgumentBuilder.Build(cookieOptions, new[] { "https://play.joj.sk/player/test" }, new ToolState { PluginDirectory = pluginDirectory });
+            int encodingIndex = args.IndexOf("--encoding");
+            True(encodingIndex >= 0 && args[encodingIndex + 1] == "utf-8", "yt-dlp dostane výstupní kódování UTF-8");
+            True(args.Contains("before_dl:MV_ITEM:%(title)s"), "yt-dlp vypíše název právě stahované položky");
             True(args.Contains("after_move:MV_DONE:%(filepath)s"), "dokončené soubory mají samostatný stav");
             True(args.Contains("--continue") && args.Contains("--part"), "rozpracovaný soubor lze bezpečně navázat");
             int progressDeltaIndex = args.IndexOf("--progress-delta");
@@ -213,8 +284,9 @@ namespace MVMediaStudio.Tests
         private static void TestDiagnosticRedaction()
         {
             string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            string syntheticApiKey = "AI" + "za" + new string('A', 35);
             string input = home + "\\video.mkv https://example.com/watch?id=123&token=abc " +
-                "Authorization: Bearer tajne " + "AI" + "zaSyB02udgMkNLADkLJ_w5YNBMR2VR1WHfusI " +
+                "Authorization: Bearer tajne " + syntheticApiKey + " " +
                 "eyJabcdefghijk.abcdefghijklmnop.qwertyuiop wst=webshare-tajne";
             string safe = DiagnosticRedactor.Redact(input);
             True(safe.IndexOf(home, StringComparison.OrdinalIgnoreCase) < 0, "report skryje uživatelskou cestu");
@@ -282,11 +354,17 @@ namespace MVMediaStudio.Tests
             True(firstHash.Length == 40 && firstHash == secondHash, "Webshare heslo se převádí na stabilní SHA-1 hash");
             True(firstHash != WebsharePasswordHash.Create("heslo", "jinaSul1"), "Webshare hash používá sůl účtu");
 
-            using (WebClient client = new WebClient())
+            using (HttpRequestMessage request = WebshareService.CreateApiRequest(
+                "test/",
+                new Dictionary<string, string> { { "value", "a b" } }))
             {
-                WebshareService.ConfigureApiClient(client);
-                True(string.IsNullOrWhiteSpace(client.Headers[HttpRequestHeader.ContentType]), "Webshare nepřepisuje Content-Type spravovaný UploadValues");
-                True(client.Headers[HttpRequestHeader.Accept] == "text/xml; charset=UTF-8", "Webshare očekává XML odpověď");
+                True(
+                    request.Content.Headers.ContentType.MediaType == "application/x-www-form-urlencoded",
+                    "Webshare odesílá formulářový Content-Type");
+                True(
+                    request.Headers.GetValues("Accept").Any(value => value == "text/xml; charset=UTF-8"),
+                    "Webshare očekává XML odpověď");
+                True(request.Headers.Referrer.Host == "webshare.cz", "Webshare posílá referer");
             }
         }
 

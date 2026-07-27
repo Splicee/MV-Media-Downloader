@@ -1,0 +1,249 @@
+<Window
+    x:Class="MVMediaStudio.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+    xmlns:views="clr-namespace:MVMediaStudio.Views"
+    Title="MV Media Downloader"
+    Width="1360"
+    Height="860"
+    MinWidth="920"
+    MinHeight="680"
+    Background="{DynamicResource WindowBackground}"
+    FontFamily="Segoe UI"
+    ResizeMode="CanResize"
+    SnapsToDevicePixels="True"
+    UseLayoutRounding="True"
+    WindowStartupLocation="CenterScreen"
+    WindowStyle="None"
+    mc:Ignorable="d">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome
+            CaptionHeight="62"
+            CornerRadius="8"
+            GlassFrameThickness="0"
+            ResizeBorderThickness="7"
+            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid x:Name="RootGrid" Background="{DynamicResource WindowBackground}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="62" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="30" />
+        </Grid.RowDefinitions>
+
+        <Grid Background="{DynamicResource TitleBar}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="BrandColumn" Width="270" />
+                <ColumnDefinition x:Name="NavigationColumn" Width="320" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="138" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel
+                Margin="20,0,0,0"
+                VerticalAlignment="Center"
+                Orientation="Horizontal">
+                <Border
+                    Width="34"
+                    Height="34"
+                    Background="#20A4F3"
+                    CornerRadius="7">
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontSize="13"
+                        FontWeight="Bold"
+                        Foreground="White"
+                        Text="MV" />
+                </Border>
+                <StackPanel
+                    x:Name="BrandTextPanel"
+                    Margin="10,0,0,0"
+                    VerticalAlignment="Center">
+                    <TextBlock
+                        FontSize="15"
+                        FontWeight="SemiBold"
+                        Foreground="White"
+                        Text="MV Media Downloader" />
+                    <TextBlock
+                        x:Name="BrandSubtitle"
+                        FontSize="10.5"
+                        Foreground="{DynamicResource TitleBarMuted}"
+                        Text="stahování a konverze" />
+                </StackPanel>
+            </StackPanel>
+
+            <Border
+                Grid.Column="1"
+                Height="42"
+                Padding="4"
+                VerticalAlignment="Center"
+                Background="{DynamicResource TitleBarSurface}"
+                CornerRadius="7">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition />
+                        <ColumnDefinition />
+                    </Grid.ColumnDefinitions>
+                    <Button
+                        x:Name="DownloadNavButton"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                        Style="{StaticResource NavButtonStyle}">
+                        <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe MDL2 Assets"
+                                FontSize="14"
+                                Text="&#xE896;" />
+                            <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Stahování" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="ConversionNavButton"
+                        Grid.Column="1"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                        Style="{StaticResource NavButtonStyle}">
+                        <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe MDL2 Assets"
+                                FontSize="14"
+                                Text="&#xE895;" />
+                            <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Konverze" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <StackPanel
+                x:Name="ToolStatusPanel"
+                Grid.Column="3"
+                Margin="8,0,12,0"
+                VerticalAlignment="Center"
+                Orientation="Horizontal" />
+
+            <Button
+                x:Name="RepairButton"
+                Grid.Column="4"
+                Margin="0,11,10,11"
+                shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                Style="{StaticResource TitleActionButtonStyle}">
+                <Button.Content>
+                    <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontFamily="Segoe MDL2 Assets"
+                            FontSize="14"
+                            Text="&#xE90F;" />
+                        <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Nástroje" />
+                    </StackPanel>
+                </Button.Content>
+                <Button.ContextMenu>
+                    <ContextMenu x:Name="RepairContextMenu" MinWidth="285">
+                        <MenuItem x:Name="CheckToolsMenuItem" Header="Zkontrolovat nástroje" />
+                        <MenuItem x:Name="SupportedSourcesMenuItem" Header="Podporované weby" />
+                        <Separator />
+                        <MenuItem x:Name="InstallYtDlpMenuItem" Header="Stáhnout / aktualizovat yt-dlp" />
+                        <MenuItem x:Name="InstallFfmpegMenuItem" Header="Stáhnout / opravit FFmpeg" />
+                        <MenuItem x:Name="InstallDenoMenuItem" Header="Stáhnout / opravit JS runtime (Deno)" />
+                        <MenuItem x:Name="ImportYtDlpMenuItem" Header="Vybrat existující yt-dlp.exe" />
+                        <Separator />
+                        <MenuItem x:Name="CheckUpdateMenuItem" Header="Zkontrolovat aktualizace aplikace" />
+                        <MenuItem
+                            x:Name="AutoUpdateMenuItem"
+                            Header="Automaticky kontrolovat aktualizace"
+                            IsCheckable="True" />
+                        <Separator />
+                        <MenuItem
+                            x:Name="AdvancedMenuItem"
+                            Header="Pokročilé zobrazení"
+                            IsCheckable="True" />
+                        <MenuItem x:Name="ThemeMenuItem" Header="Světlý režim" />
+                        <Separator />
+                        <MenuItem x:Name="OpenDataMenuItem" Header="Otevřít data a logy" />
+                    </ContextMenu>
+                </Button.ContextMenu>
+            </Button>
+
+            <Grid Grid.Column="5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition />
+                    <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <Button
+                    x:Name="MinimizeWindowButton"
+                    shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                    Style="{StaticResource WindowButtonStyle}"
+                    ToolTip="Minimalizovat">
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontFamily="Segoe MDL2 Assets"
+                        FontSize="10"
+                        Text="&#xE921;" />
+                </Button>
+                <Button
+                    x:Name="MaximizeWindowButton"
+                    Grid.Column="1"
+                    shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                    Style="{StaticResource WindowButtonStyle}"
+                    ToolTip="Maximalizovat">
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontFamily="Segoe MDL2 Assets"
+                        FontSize="10"
+                        Text="&#xE922;" />
+                </Button>
+                <Button
+                    x:Name="CloseWindowButton"
+                    Grid.Column="2"
+                    shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                    Style="{StaticResource CloseWindowButtonStyle}"
+                    ToolTip="Zavřít">
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontFamily="Segoe MDL2 Assets"
+                        FontSize="10"
+                        Text="&#xE8BB;" />
+                </Button>
+            </Grid>
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <Grid x:Name="DownloadPageHost">
+                <views:DownloadView x:Name="DownloadViewControl" />
+            </Grid>
+            <Grid x:Name="ConversionPageHost" Visibility="Collapsed">
+                <views:ConversionView x:Name="ConversionViewControl" />
+            </Grid>
+        </Grid>
+
+        <Grid Grid.Row="2" Margin="24,0,20,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock
+                x:Name="FooterStatus"
+                VerticalAlignment="Center"
+                FontSize="11.5"
+                Foreground="{DynamicResource Muted}"
+                Text="Připraveno" />
+            <TextBlock
+                x:Name="VersionText"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                FontSize="11.5"
+                Foreground="{DynamicResource Muted}" />
+        </Grid>
+    </Grid>
+</Window>

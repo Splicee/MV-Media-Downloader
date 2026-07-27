@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -12,6 +12,7 @@ namespace MVMediaStudio.Services
 {
     internal static class UpdateService
     {
+        private static readonly HttpClient Client = CreateClient();
         public const string RepositoryOwner = "Splicee";
         public const string RepositoryName = "MV-Media-Downloader";
 
@@ -26,28 +27,18 @@ namespace MVMediaStudio.Services
                 throw new InvalidOperationException("Aktualizační kanál zatím není propojený s GitHub účtem.");
 
             string endpoint = "https://api.github.com/repos/" + RepositoryOwner + "/" + RepositoryName + "/releases/latest";
-            string json = await Task.Run(delegate
-            {
-                using (WebClient client = CreateClient())
-                    return client.DownloadString(endpoint);
-            });
+            string json = await DownloadTextAsync(endpoint).ConfigureAwait(false);
 
             UpdateReleaseInfo release = UpdateMetadata.ParseRelease(json);
             if (string.IsNullOrWhiteSpace(release.Sha256))
-            {
-                string checksum = await Task.Run(delegate
-                {
-                    using (WebClient client = CreateClient())
-                        return client.DownloadString(release.ChecksumUrl);
-                });
-                release.Sha256 = UpdateMetadata.ParseChecksum(checksum);
-            }
+                release.Sha256 = UpdateMetadata.ParseChecksum(
+                    await DownloadTextAsync(release.ChecksumUrl).ConfigureAwait(false));
             if (string.IsNullOrWhiteSpace(release.Sha256))
                 throw new InvalidOperationException("Vydání nemá platný SHA-256 kontrolní součet.");
             return release;
         }
 
-        public static Task<string> DownloadAsync(UpdateReleaseInfo release, Action<double, string> progress)
+        public static async Task<string> DownloadAsync(UpdateReleaseInfo release, Action<double, string> progress)
         {
             AppPaths.EnsureDirectories();
             string finalPath = Path.Combine(AppPaths.UpdateDirectory, "MV-Media-Downloader-" + release.Version + ".zip");
@@ -55,41 +46,55 @@ namespace MVMediaStudio.Services
             if (File.Exists(temporaryPath))
                 File.Delete(temporaryPath);
 
-            TaskCompletionSource<string> completion = new TaskCompletionSource<string>();
-            WebClient client = CreateClient();
-            client.DownloadProgressChanged += delegate(object sender, DownloadProgressChangedEventArgs eventArgs)
+            try
             {
-                if (progress != null)
-                    progress(eventArgs.ProgressPercentage, "Stahuji aktualizaci");
-            };
-            client.DownloadFileCompleted += delegate(object sender, System.ComponentModel.AsyncCompletedEventArgs eventArgs)
+                using (HttpResponseMessage response = await Client.GetAsync(
+                    release.PackageUrl,
+                    HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false))
+                {
+                    response.EnsureSuccessStatusCode();
+                    long total = response.Content.Headers.ContentLength ?? -1;
+                    using (Stream input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                    using (FileStream output = new FileStream(
+                        temporaryPath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.None,
+                        65536,
+                        FileOptions.Asynchronous | FileOptions.SequentialScan))
+                    {
+                        byte[] buffer = new byte[65536];
+                        long received = 0;
+                        int lastPercentage = -1;
+                        int read;
+                        while ((read = await input.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
+                        {
+                            await output.WriteAsync(buffer, 0, read).ConfigureAwait(false);
+                            received += read;
+                            if (total <= 0 || progress == null)
+                                continue;
+                            int percentage = (int)Math.Min(100, received * 100L / total);
+                            if (percentage == lastPercentage)
+                                continue;
+                            lastPercentage = percentage;
+                            progress(percentage, "Stahuji aktualizaci");
+                        }
+                    }
+                }
+
+                string actual = ComputeSha256(temporaryPath);
+                if (!string.Equals(actual, release.Sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("SHA-256 aktualizace nesouhlasí. Soubor nebude použit.");
+                if (File.Exists(finalPath))
+                    File.Delete(finalPath);
+                File.Move(temporaryPath, finalPath);
+                return finalPath;
+            }
+            catch
             {
-                try
-                {
-                    if (eventArgs.Cancelled)
-                        throw new OperationCanceledException("Stahování aktualizace bylo zrušeno.");
-                    if (eventArgs.Error != null)
-                        throw eventArgs.Error;
-                    string actual = ComputeSha256(temporaryPath);
-                    if (!string.Equals(actual, release.Sha256, StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidDataException("SHA-256 aktualizace nesouhlasí. Soubor nebude použit.");
-                    if (File.Exists(finalPath))
-                        File.Delete(finalPath);
-                    File.Move(temporaryPath, finalPath);
-                    completion.TrySetResult(finalPath);
-                }
-                catch (Exception error)
-                {
-                    try { if (File.Exists(temporaryPath)) File.Delete(temporaryPath); } catch { }
-                    completion.TrySetException(error);
-                }
-                finally
-                {
-                    client.Dispose();
-                }
-            };
-            client.DownloadFileAsync(new Uri(release.PackageUrl), temporaryPath);
-            return completion.Task;
+                try { if (File.Exists(temporaryPath)) File.Delete(temporaryPath); } catch { }
+                throw;
+            }
         }
 
         public static void LaunchUpdater(UpdateReleaseInfo release, string packagePath)
@@ -159,12 +164,24 @@ namespace MVMediaStudio.Services
             }
         }
 
-        private static WebClient CreateClient()
+        private static HttpClient CreateClient()
         {
-            WebClient client = new WebClient();
-            client.Headers[HttpRequestHeader.UserAgent] = AppInfo.UserAgent;
-            client.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
+            HttpClient client = new HttpClient
+            {
+                Timeout = TimeSpan.FromMinutes(10)
+            };
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(AppInfo.UserAgent);
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
             return client;
+        }
+
+        private static async Task<string> DownloadTextAsync(string url)
+        {
+            using (HttpResponseMessage response = await Client.GetAsync(url).ConfigureAwait(false))
+            {
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            }
         }
 
         private static string ComputeSha256(string path)

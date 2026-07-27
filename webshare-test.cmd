@@ -1,5 +1,6 @@
 @echo off
 setlocal EnableExtensions
+chcp 65001 >nul
 
 if "%~1"=="" (
   echo Pouziti: webshare-test.cmd "https://webshare.cz/#/file/..."
@@ -7,14 +8,22 @@ if "%~1"=="" (
 )
 
 set "ROOT=%~dp0"
-set "CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-if not exist "%CSC%" set "CSC=C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
-set "TEST_EXE=%TEMP%\mv-media-webshare-test.exe"
+set "PROJECT=%ROOT%tests\MVMediaStudio.WebshareIntegrationTests\MVMediaStudio.WebshareIntegrationTests.csproj"
+set "MV_MEDIA_DOWNLOADER_DATA_DIR=%ROOT%artifacts\test-data\webshare"
+set "DOTNET_CLI_TELEMETRY_OPTOUT=1"
+set "DOTNET_NOLOGO=1"
 
-"%CSC%" /nologo /target:exe /platform:anycpu /optimize+ /nowarn:0649 /codepage:65001 /out:"%TEST_EXE%" /reference:System.dll /reference:System.Core.dll /reference:System.Security.dll "%ROOT%src\Core\AppPaths.cs" "%ROOT%src\Core\DiagnosticRedactor.cs" "%ROOT%src\Core\Models.cs" "%ROOT%src\Core\DownloadProviders.cs" "%ROOT%src\Services\WebshareService.cs" "%ROOT%tests\WebshareIntegrationTests.cs"
+where dotnet >nul 2>&1
+if errorlevel 1 (
+  echo CHYBA: Nebylo nalezeno .NET 10 SDK.
+  exit /b 1
+)
+
+dotnet build "%PROJECT%" --configuration Release --nologo --verbosity minimal
 if errorlevel 1 exit /b 1
 
-"%TEST_EXE%" "%~1"
+pushd "%ROOT%"
+dotnet run --project "%PROJECT%" --configuration Release --no-build --no-restore -- "%~1"
 set "RESULT=%ERRORLEVEL%"
-del /Q "%TEST_EXE%" >nul 2>nul
+popd
 exit /b %RESULT%

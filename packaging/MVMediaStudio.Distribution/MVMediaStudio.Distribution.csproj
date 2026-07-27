@@ -1,0 +1,216 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Library</OutputType>
+    <RootNamespace>MVMediaStudio.Distribution</RootNamespace>
+    <AssemblyName>MVMediaStudio.Distribution</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <RepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..'))</RepositoryRoot>
+    <AppProject>$(RepositoryRoot)\src\MVMediaStudio\MVMediaStudio.csproj</AppProject>
+    <UpdaterProject>$(RepositoryRoot)\updater\MVMediaStudio.Updater\MVMediaStudio.Updater.csproj</UpdaterProject>
+    <DistributionRuntimeIdentifier Condition="'$(DistributionRuntimeIdentifier)' == ''">win-x64</DistributionRuntimeIdentifier>
+    <DistributionRoot Condition="'$(DistributionRoot)' == ''">$(RepositoryRoot)\artifacts\publish\$(DistributionRuntimeIdentifier)</DistributionRoot>
+    <ReleaseRoot Condition="'$(ReleaseRoot)' == ''">$(RepositoryRoot)\release</ReleaseRoot>
+    <ReleaseArchiveName Condition="'$(ReleaseArchiveName)' == ''">MV-Media-Downloader-$(DistributionRuntimeIdentifier).zip</ReleaseArchiveName>
+    <ReleaseArchive>$(ReleaseRoot)\$(ReleaseArchiveName)</ReleaseArchive>
+    <ReleaseChecksum>$(ReleaseArchive).sha256</ReleaseChecksum>
+    <CreateReleaseArchive Condition="'$(CreateReleaseArchive)' == ''">true</CreateReleaseArchive>
+
+    <DistributionStage>$(MSBuildProjectDirectory)\obj\distribution\$(DistributionRuntimeIdentifier)</DistributionStage>
+    <AppPublishDirectory>$(DistributionStage)\app</AppPublishDirectory>
+    <UpdaterPublishDirectory>$(DistributionStage)\updater</UpdaterPublishDirectory>
+    <YtDlpDownloadDirectory>$(DistributionStage)\yt-dlp</YtDlpDownloadDirectory>
+    <YtDlpSource Condition="'$(YtDlpSource)' == ''">$(RepositoryRoot)\tools\yt-dlp.exe</YtDlpSource>
+    <YtDlpDownloadUrl>https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe</YtDlpDownloadUrl>
+    <YtDlpChecksumUrl>https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS</YtDlpChecksumUrl>
+
+    <AppExecutable>$(DistributionRoot)\MV Media Downloader.exe</AppExecutable>
+    <UpdaterExecutable>$(DistributionRoot)\MV Media Downloader Updater.exe</UpdaterExecutable>
+    <SignToolPath Condition="'$(SignToolPath)' == '' and '$(SIGNTOOL_PATH)' != ''">$(SIGNTOOL_PATH)</SignToolPath>
+    <SignToolPath Condition="'$(SignToolPath)' == ''">signtool.exe</SignToolPath>
+    <SignCertPath Condition="'$(SignCertPath)' == '' and '$(SIGN_CERT_PATH)' != ''">$(SIGN_CERT_PATH)</SignCertPath>
+    <SignCertPassword Condition="'$(SignCertPassword)' == '' and '$(SIGN_CERT_PASSWORD)' != ''">$(SIGN_CERT_PASSWORD)</SignCertPassword>
+    <SignCertSha1 Condition="'$(SignCertSha1)' == '' and '$(SIGN_CERT_SHA1)' != ''">$(SIGN_CERT_SHA1)</SignCertSha1>
+    <SignTimestampUrl Condition="'$(SignTimestampUrl)' == '' and '$(SIGN_TIMESTAMP_URL)' != ''">$(SIGN_TIMESTAMP_URL)</SignTimestampUrl>
+    <SignTimestampUrl Condition="'$(SignTimestampUrl)' == ''">http://timestamp.digicert.com</SignTimestampUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(AppProject)" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="$(UpdaterProject)" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Target Name="CleanDistribution">
+    <RemoveDir Directories="$(DistributionStage)" />
+    <RemoveDir Directories="$(DistributionRoot)" />
+    <MakeDir Directories="$(DistributionStage);$(DistributionRoot)" />
+  </Target>
+
+  <Target Name="ResolveYtDlp" DependsOnTargets="CleanDistribution">
+    <PropertyGroup>
+      <ResolvedYtDlpSource Condition="Exists('$(YtDlpSource)')">$(YtDlpSource)</ResolvedYtDlpSource>
+    </PropertyGroup>
+
+    <MakeDir
+      Condition="'$(ResolvedYtDlpSource)' == ''"
+      Directories="$(YtDlpDownloadDirectory)" />
+    <DownloadFile
+      Condition="'$(ResolvedYtDlpSource)' == ''"
+      SourceUrl="$(YtDlpChecksumUrl)"
+      DestinationFolder="$(YtDlpDownloadDirectory)"
+      DestinationFileName="SHA2-256SUMS"
+      Retries="3"
+      RetryDelayMilliseconds="1000" />
+    <ReadLinesFromFile
+      Condition="'$(ResolvedYtDlpSource)' == ''"
+      File="$(YtDlpDownloadDirectory)\SHA2-256SUMS">
+      <Output TaskParameter="Lines" ItemName="_YtDlpChecksumLines" />
+    </ReadLinesFromFile>
+    <ItemGroup Condition="'$(ResolvedYtDlpSource)' == ''">
+      <_YtDlpChecksumLine
+        Include="@(_YtDlpChecksumLines)"
+        Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^[A-Fa-f0-9]{64}\s+\*?yt-dlp\.exe$'))">
+        <ExpectedHash>$([System.String]::Copy('%(Identity)').Substring(0, 64))</ExpectedHash>
+      </_YtDlpChecksumLine>
+    </ItemGroup>
+    <Error
+      Condition="'$(ResolvedYtDlpSource)' == '' and '@(_YtDlpChecksumLine)' == ''"
+      Text="Official yt-dlp checksum was not found in SHA2-256SUMS." />
+    <DownloadFile
+      Condition="'$(ResolvedYtDlpSource)' == ''"
+      SourceUrl="$(YtDlpDownloadUrl)"
+      DestinationFolder="$(YtDlpDownloadDirectory)"
+      DestinationFileName="yt-dlp.exe"
+      Retries="3"
+      RetryDelayMilliseconds="1000" />
+    <GetFileHash
+      Condition="'$(ResolvedYtDlpSource)' == ''"
+      Files="$(YtDlpDownloadDirectory)\yt-dlp.exe"
+      Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="_DownloadedYtDlpHash" />
+    </GetFileHash>
+    <PropertyGroup Condition="'$(ResolvedYtDlpSource)' == ''">
+      <_YtDlpActualHash>@(_DownloadedYtDlpHash->'%(FileHash)')</_YtDlpActualHash>
+    </PropertyGroup>
+    <Error
+      Condition="'$(ResolvedYtDlpSource)' == '' and '$(_YtDlpActualHash)' != '@(_YtDlpChecksumLine->'%(ExpectedHash)')'"
+      Text="Downloaded yt-dlp.exe failed SHA-256 verification. Expected @(_YtDlpChecksumLine->'%(ExpectedHash)'), actual $(_YtDlpActualHash)." />
+    <PropertyGroup>
+      <ResolvedYtDlpSource Condition="'$(ResolvedYtDlpSource)' == ''">$(YtDlpDownloadDirectory)\yt-dlp.exe</ResolvedYtDlpSource>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="PublishApplications" DependsOnTargets="ResolveYtDlp">
+    <MSBuild
+      Projects="$(AppProject)"
+      Targets="Publish"
+      BuildInParallel="false"
+      Properties="Configuration=$(Configuration);RuntimeIdentifier=$(DistributionRuntimeIdentifier);SelfContained=true;PublishProfile=Windows-x64;PublishDir=$(AppPublishDirectory);NoRestore=true" />
+    <MSBuild
+      Projects="$(UpdaterProject)"
+      Targets="Publish"
+      BuildInParallel="false"
+      Properties="Configuration=$(Configuration);RuntimeIdentifier=$(DistributionRuntimeIdentifier);SelfContained=true;PublishProfile=Windows-x64;PublishDir=$(UpdaterPublishDirectory);NoRestore=true" />
+  </Target>
+
+  <Target Name="AssembleDistribution" DependsOnTargets="PublishApplications">
+    <Error
+      Condition="!Exists('$(AppPublishDirectory)\MV Media Downloader.exe')"
+      Text="Published application executable is missing." />
+    <Error
+      Condition="!Exists('$(UpdaterPublishDirectory)\MV Media Downloader Updater.exe')"
+      Text="Published updater executable is missing." />
+    <Error
+      Condition="!Exists('$(AppPublishDirectory)\yt-dlp-plugins')"
+      Text="Published yt-dlp plugin directory is missing." />
+
+    <ItemGroup>
+      <_AppPublishedFiles Include="$(AppPublishDirectory)\**\*" />
+      <_Documentation Include="$(RepositoryRoot)\README.md" />
+      <_Documentation Include="$(RepositoryRoot)\THIRD_PARTY_NOTICES.md" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(_AppPublishedFiles)"
+      DestinationFiles="@(_AppPublishedFiles->'$(DistributionRoot)\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy
+      SourceFiles="$(UpdaterPublishDirectory)\MV Media Downloader Updater.exe"
+      DestinationFiles="$(UpdaterExecutable)" />
+    <Copy
+      SourceFiles="$(ResolvedYtDlpSource)"
+      DestinationFiles="$(DistributionRoot)\yt-dlp.exe" />
+    <Copy
+      SourceFiles="@(_Documentation)"
+      DestinationFolder="$(DistributionRoot)" />
+  </Target>
+
+  <Target
+    Name="SignDistribution"
+    DependsOnTargets="AssembleDistribution"
+    Condition="'$(SignCertPath)' != '' or '$(SignCertSha1)' != ''">
+    <Exec
+      Condition="'$(SignCertPath)' != '' and '$(SignCertPassword)' != ''"
+      Command="&quot;$(SignToolPath)&quot; sign /fd SHA256 /f &quot;$(SignCertPath)&quot; /p &quot;$(SignCertPassword)&quot; /tr &quot;$(SignTimestampUrl)&quot; /td SHA256 /d &quot;MV Media Downloader&quot; &quot;$(AppExecutable)&quot;" />
+    <Exec
+      Condition="'$(SignCertPath)' != '' and '$(SignCertPassword)' == ''"
+      Command="&quot;$(SignToolPath)&quot; sign /fd SHA256 /f &quot;$(SignCertPath)&quot; /tr &quot;$(SignTimestampUrl)&quot; /td SHA256 /d &quot;MV Media Downloader&quot; &quot;$(AppExecutable)&quot;" />
+    <Exec
+      Condition="'$(SignCertPath)' == '' and '$(SignCertSha1)' != ''"
+      Command="&quot;$(SignToolPath)&quot; sign /fd SHA256 /sha1 &quot;$(SignCertSha1)&quot; /tr &quot;$(SignTimestampUrl)&quot; /td SHA256 /d &quot;MV Media Downloader&quot; &quot;$(AppExecutable)&quot;" />
+    <Exec
+      Condition="'$(SignCertPath)' != '' and '$(SignCertPassword)' != ''"
+      Command="&quot;$(SignToolPath)&quot; sign /fd SHA256 /f &quot;$(SignCertPath)&quot; /p &quot;$(SignCertPassword)&quot; /tr &quot;$(SignTimestampUrl)&quot; /td SHA256 /d &quot;MV Media Downloader&quot; &quot;$(UpdaterExecutable)&quot;" />
+    <Exec
+      Condition="'$(SignCertPath)' != '' and '$(SignCertPassword)' == ''"
+      Command="&quot;$(SignToolPath)&quot; sign /fd SHA256 /f &quot;$(SignCertPath)&quot; /tr &quot;$(SignTimestampUrl)&quot; /td SHA256 /d &quot;MV Media Downloader&quot; &quot;$(UpdaterExecutable)&quot;" />
+    <Exec
+      Condition="'$(SignCertPath)' == '' and '$(SignCertSha1)' != ''"
+      Command="&quot;$(SignToolPath)&quot; sign /fd SHA256 /sha1 &quot;$(SignCertSha1)&quot; /tr &quot;$(SignTimestampUrl)&quot; /td SHA256 /d &quot;MV Media Downloader&quot; &quot;$(UpdaterExecutable)&quot;" />
+  </Target>
+
+  <Target
+    Name="CreateDistributionArchive"
+    DependsOnTargets="SignDistribution"
+    Condition="'$(CreateReleaseArchive)' == 'true'">
+    <MakeDir Directories="$(ReleaseRoot)" />
+    <Delete Files="$(ReleaseArchive);$(ReleaseChecksum)" />
+    <ZipDirectory
+      SourceDirectory="$(DistributionRoot)"
+      DestinationFile="$(ReleaseArchive)"
+      Overwrite="true" />
+    <ItemGroup>
+      <_ReleaseArchive Include="$(ReleaseArchive)" />
+    </ItemGroup>
+    <GetFileHash Files="@(_ReleaseArchive)" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="_ReleaseArchiveHash" />
+    </GetFileHash>
+    <PropertyGroup>
+      <_ReleaseHash>@(_ReleaseArchiveHash->'%(FileHash)')</_ReleaseHash>
+      <_ReleaseHashLower>$([System.String]::Copy('$(_ReleaseHash)').ToLowerInvariant())</_ReleaseHashLower>
+      <_ReleaseChecksumLine>$(_ReleaseHashLower)  $(ReleaseArchiveName)</_ReleaseChecksumLine>
+    </PropertyGroup>
+    <WriteLinesToFile
+      File="$(ReleaseChecksum)"
+      Lines="$(_ReleaseChecksumLine)"
+      Overwrite="true"
+      Encoding="ASCII" />
+  </Target>
+
+  <Target
+    Name="PublishDistribution"
+    AfterTargets="Publish"
+    DependsOnTargets="AssembleDistribution;SignDistribution;CreateDistributionArchive">
+    <Message Importance="high" Text="Distribution: $(DistributionRoot)" />
+    <Message
+      Condition="'$(CreateReleaseArchive)' == 'true'"
+      Importance="high"
+      Text="Release archive: $(ReleaseArchive)" />
+    <Message
+      Condition="'$(CreateReleaseArchive)' == 'true'"
+      Importance="high"
+      Text="SHA-256: $(ReleaseChecksum)" />
+  </Target>
+</Project>

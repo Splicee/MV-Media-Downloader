@@ -60,6 +60,8 @@ namespace MVMediaStudio.Core
                 throw new ArgumentException("Není vložen žádný odkaz.");
 
             List<string> args = new List<string>();
+            args.Add("--encoding");
+            args.Add("utf-8");
             args.Add("--newline");
             args.Add("--progress");
             args.Add("--progress-delta");
@@ -74,6 +76,8 @@ namespace MVMediaStudio.Core
             args.Add(options.OutputDirectory);
             args.Add("-o");
             args.Add("%(title)s [%(id)s].%(ext)s");
+            args.Add("--print");
+            args.Add("before_dl:" + DownloadOutputParser.CurrentItemPrefix + "%(title)s");
             args.Add("--print");
             args.Add("after_move:MV_DONE:%(filepath)s");
 

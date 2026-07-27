@@ -1,31 +1,41 @@
 @echo off
 setlocal EnableExtensions
+chcp 65001 >nul
 
 set "ROOT=%~dp0"
-set "CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-if not exist "%CSC%" set "CSC=C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
-set "TEST_EXE=%TEMP%\mv-media-downloader-tests.exe"
-set "UPDATER_TEST_EXE=%TEMP%\mv-media-updater-tests.exe"
+set "SOLUTION=%ROOT%MV Media Downloader.sln"
+set "CORE_TESTS=%ROOT%tests\MVMediaStudio.Tests\MVMediaStudio.Tests.csproj"
+set "UI_TESTS=%ROOT%tests\MVMediaStudio.UiSmoke\MVMediaStudio.UiSmoke.csproj"
+set "UPDATER_PROJECT=%ROOT%updater\MVMediaStudio.Updater\MVMediaStudio.Updater.csproj"
+set "DOTNET_CLI_TELEMETRY_OPTOUT=1"
+set "DOTNET_NOLOGO=1"
 
-powershell.exe -NoProfile -Command "$files=Get-ChildItem -LiteralPath '%ROOT%' -Recurse -File | Where-Object { $_.FullName -notmatch '\\(dist|release|artifacts|\.git)\\' }; $leaks=$files | Select-String -Pattern 'AIza[0-9A-Za-z_-]{20,}'; if($leaks){$leaks | ForEach-Object { Write-Host ('CHYBA: Podezrely klic v ' + $_.Path + ':' + $_.LineNumber) }; exit 1}"
+where dotnet >nul 2>&1
+if errorlevel 1 (
+  echo CHYBA: Nebylo nalezeno .NET SDK. Nainstaluj .NET 10 SDK.
+  exit /b 1
+)
+
+powershell.exe -NoProfile -Command "$extensions=@('.cs','.xaml','.xml','.json','.yml','.yaml','.ps1','.cmd','.md','.py','.txt','.csproj','.sln'); $files=Get-ChildItem -LiteralPath '%ROOT%' -Recurse -File | Where-Object { $extensions -contains $_.Extension.ToLowerInvariant() -and $_.FullName -notmatch '\\(dist|release|artifacts|bin|obj|\.git)\\' }; $leaks=$files | Select-String -Pattern 'AIza[0-9A-Za-z_-]{20,}'; if($leaks){$leaks | ForEach-Object { Write-Host ('CHYBA: Podezrely klic v ' + $_.Path + ':' + $_.LineNumber) }; exit 1}"
 if errorlevel 1 exit /b 1
+
 powershell.exe -NoProfile -Command "$plugin=[IO.File]::ReadAllText('%ROOT%yt-dlp-plugins\mv-joj-play\yt_dlp_plugins\extractor\jojplay.py'); if($plugin -notmatch '_REFRESH_TOKEN' -or $plugin -notmatch 'refresh_token' -or $plugin -notmatch '_TOKEN_EXPIRES_AT'){Write-Host 'CHYBA: JOJ konektor nema obnovu relace.'; exit 1}"
 if errorlevel 1 exit /b 1
 
-"%CSC%" /nologo /target:exe /platform:anycpu /optimize+ /nowarn:0649 /codepage:65001 /out:"%TEST_EXE%" /reference:System.dll /reference:System.Core.dll /reference:System.Security.dll /reference:System.Web.Extensions.dll "%ROOT%src\Core\AppInfo.cs" "%ROOT%src\Core\AppPaths.cs" "%ROOT%src\Core\Models.cs" "%ROOT%src\Core\ArgumentBuilders.cs" "%ROOT%src\Core\DiagnosticRedactor.cs" "%ROOT%src\Core\DownloadProviders.cs" "%ROOT%src\Core\DownloadUrlParser.cs" "%ROOT%src\Core\MediaFileSupport.cs" "%ROOT%src\Core\ScrollWheelTuning.cs" "%ROOT%src\Core\UpdateMetadata.cs" "%ROOT%src\Services\DiagnosticReportService.cs" "%ROOT%src\Services\JojUrlResolver.cs" "%ROOT%src\Services\WebshareService.cs" "%ROOT%tests\CoreTests.cs"
+dotnet restore "%SOLUTION%" --nologo --verbosity minimal
 if errorlevel 1 exit /b 1
-"%TEST_EXE%"
-if errorlevel 1 goto :Failed
 
-"%CSC%" /nologo /target:exe /platform:anycpu /optimize+ /codepage:65001 /out:"%UPDATER_TEST_EXE%" /reference:System.dll /reference:System.Core.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll "%ROOT%updater\Updater.cs"
-if errorlevel 1 goto :Failed
-"%UPDATER_TEST_EXE%" --self-test
-if errorlevel 1 goto :Failed
+dotnet build "%SOLUTION%" --configuration Release --no-restore --nologo --verbosity minimal
+if errorlevel 1 exit /b 1
 
-del /Q "%TEST_EXE%" "%UPDATER_TEST_EXE%" >nul 2>nul
+dotnet run --project "%CORE_TESTS%" --configuration Release --no-build --no-restore
+if errorlevel 1 exit /b 1
+
+dotnet run --project "%UPDATER_PROJECT%" --configuration Release --no-build --no-restore -- --self-test
+if errorlevel 1 exit /b 1
+
+dotnet run --project "%UI_TESTS%" --configuration Release --no-build --no-restore
+if errorlevel 1 exit /b 1
+
+echo HOTOVO: Vsechny automaticke kontroly prosly.
 exit /b 0
-
-:Failed
-set "RESULT=%ERRORLEVEL%"
-del /Q "%TEST_EXE%" "%UPDATER_TEST_EXE%" >nul 2>nul
-exit /b %RESULT%

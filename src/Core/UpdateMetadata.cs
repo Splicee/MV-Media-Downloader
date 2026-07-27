@@ -1,6 +1,6 @@
 using System;
 using System.Linq;
-using System.Web.Script.Serialization;
+using System.Text.Json;
 
 namespace MVMediaStudio.Core
 {
@@ -24,7 +24,7 @@ namespace MVMediaStudio.Core
             if (string.IsNullOrWhiteSpace(json))
                 throw new InvalidOperationException("GitHub nevrátil informace o vydání.");
 
-            GitHubRelease release = new JavaScriptSerializer().Deserialize<GitHubRelease>(json);
+            GitHubRelease release = JsonSerializer.Deserialize<GitHubRelease>(json);
             if (release == null || release.draft || release.prerelease)
                 throw new InvalidOperationException("Poslední vydání není stabilní.");
 

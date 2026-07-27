@@ -5,7 +5,7 @@ using System.Windows.Controls;
 
 namespace MVMediaStudio.UI
 {
-    internal sealed class AdaptiveGrid : Panel
+    public sealed class AdaptiveGrid : Panel
     {
         public AdaptiveGrid()
         {

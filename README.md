@@ -30,41 +30,65 @@ Windows aplikace od MV pro stahování médií přes yt-dlp, Webshare a přímé
 
 ## Sestavení
 
-Projekt používá systémový kompilátor .NET Framework a nepotřebuje NuGet ani samostatné .NET SDK.
+Projekt je standardní WPF solution pro `.NET 10`:
+
+- `MV Media Downloader.sln` – celé řešení;
+- `src\MVMediaStudio\MVMediaStudio.csproj` – hlavní WPF aplikace a XAML;
+- `updater\MVMediaStudio.Updater\MVMediaStudio.Updater.csproj` – samostatný aktualizátor;
+- `packaging\MVMediaStudio.Distribution\MVMediaStudio.Distribution.csproj` – kompletní Windows distribuce;
+- `tests\MVMediaStudio.Tests\MVMediaStudio.Tests.csproj` – funkční testy;
+- `tests\MVMediaStudio.UiSmoke\MVMediaStudio.UiSmoke.csproj` – kontrola načtení XAML, dialogů a obou motivů;
+- `tests\MVMediaStudio.*IntegrationTests` – oddělené projekty pro živé síťové testy.
+
+Pro vývoj stačí `.NET 10 SDK`. Volitelně lze solution otevřít ve Visual Studiu 2026 s workloadem **Vývoj desktopových aplikací pomocí .NET**. Verze SDK je kvůli opakovatelnému sestavení připnutá v `global.json`.
+
+Obnovení balíčků a běžné sestavení:
 
 ```bat
-build.cmd
+dotnet restore "MV Media Downloader.sln"
+dotnet build "MV Media Downloader.sln" --configuration Release
+```
+
+Připravený samostatný balíček pro Windows x64, který na cílovém počítači nevyžaduje instalaci .NET runtime:
+
+```bat
+dotnet publish "packaging\MVMediaStudio.Distribution\MVMediaStudio.Distribution.csproj" --configuration Release
 ```
 
 Výstup:
 
-- `dist\MV Media Downloader.exe`
-- `dist\MV Media Downloader Updater.exe`
+- `artifacts\publish\win-x64\MV Media Downloader.exe`
+- `artifacts\publish\win-x64\MV Media Downloader Updater.exe`
+- `artifacts\publish\win-x64\yt-dlp.exe`
+- `release\MV-Media-Downloader-win-x64.zip`
+- `release\MV-Media-Downloader-win-x64.zip.sha256`
+
+Distribuční projekt publikuje aplikaci i updater podle jejich `.pubxml` profilů, sestaví celou přenosnou složku a vytvoří ZIP s kontrolním součtem. Pokud v `tools` chybí `yt-dlp.exe`, stáhne oficiální vydání a před použitím ověří jeho SHA-256.
 
 Testy:
 
 ```bat
-test.cmd
+dotnet build "MV Media Downloader.sln" --configuration Release
+dotnet run --project "tests\MVMediaStudio.Tests\MVMediaStudio.Tests.csproj" --configuration Release --no-build
+dotnet run --project "updater\MVMediaStudio.Updater\MVMediaStudio.Updater.csproj" --configuration Release --no-build -- --self-test
+dotnet run --project "tests\MVMediaStudio.UiSmoke\MVMediaStudio.UiSmoke.csproj" --configuration Release --no-build
 ```
+
+Funkční testy ověřují mimo jiné živou změnu limitu rychlosti a zrušení celého stromu procesu. UI smoke test načte XAML, dialogy a oba motivy s oddělenou dočasnou konfigurací.
+
+Formátování C# zdrojů zajišťuje nástroj dodaný přímo v SDK:
+
+```bat
+dotnet format "MV Media Downloader.sln"
+```
+
+Projekt nevyžaduje žádný globální `.NET tool`. Tím se vývojové prostředí nemění mimo nainstalované SDK a všechny potřebné verze zůstávají řízené repozitářem.
 
 Živá kontrola českých zdrojů bez stahování celých médií:
 
 ```bat
 czech-sites-test.cmd
 ```
-
-Distribuční balíček a SHA-256:
-
-```bat
-package.cmd
-```
-
-`package.cmd` při chybějícím nebo nefunkčním yt-dlp stáhne aktuální oficiální verzi a ověří její SHA-256.
-
-Výstup:
-
-- `release\MV-Media-Downloader-win-x64.zip`
-- `release\MV-Media-Downloader-win-x64.zip.sha256`
 
 ## Aktualizace
 
@@ -105,14 +129,14 @@ Build podporuje Authenticode certifikát přes proměnné prostředí:
 ```bat
 set SIGN_CERT_PATH=C:\certifikaty\mv-code-signing.pfx
 set SIGN_CERT_PASSWORD=heslo
-build.cmd
+dotnet publish "packaging\MVMediaStudio.Distribution\MVMediaStudio.Distribution.csproj" --configuration Release
 ```
 
 Nebo certifikát z Windows úložiště:
 
 ```bat
 set SIGN_CERT_SHA1=THUMBPRINT_CERTIFIKATU
-build.cmd
+dotnet publish "packaging\MVMediaStudio.Distribution\MVMediaStudio.Distribution.csproj" --configuration Release
 ```
 
 Self-signed certifikát SmartScreen nevyřeší. Pro důvěryhodný první start je potřeba veřejně důvěryhodný OV/EV code-signing certifikát a reputace vydavatele.

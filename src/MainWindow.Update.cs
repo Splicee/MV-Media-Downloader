@@ -7,7 +7,7 @@ using MVMediaStudio.Services;
 
 namespace MVMediaStudio
 {
-    internal partial class MainWindow
+    public partial class MainWindow
     {
         private bool checkingUpdate;
 
