@@ -53,6 +53,9 @@ namespace MVMediaStudio.Tests
             failures = 0;
             TestRateControl();
             TestLiveDirectRateChange();
+            TestDirectResume();
+            TestNumberedDirectResume();
+            TestCompletePartPromotion();
             TestProcessTreeCancellation();
             TestBlockedHttpCancellation();
             return failures;
@@ -158,6 +161,139 @@ namespace MVMediaStudio.Tests
                 }
                 cancellation.Dispose();
                 try { File.Delete(marker); } catch { }
+            }
+        }
+
+        private static void TestDirectResume()
+        {
+            string output = Path.Combine(Path.GetTempPath(), "mv-media-resume-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(output);
+            const int totalSize = 384 * 1024;
+            const int partialSize = 96 * 1024;
+            string finalPath = Path.Combine(output, "resume-test.bin");
+            using (FileStream partial = File.Create(finalPath + ".part"))
+                partial.SetLength(partialSize);
+
+            using (RangeHttpServer server = new RangeHttpServer(totalSize, false))
+            {
+                try
+                {
+                    string result = DirectDownloadService.DownloadAsync(
+                        new DirectDownloadItem
+                        {
+                            Provider = "Lokální test",
+                            SourceUrl = server.Url,
+                            DownloadUrl = server.Url,
+                            FileName = "resume-test.bin",
+                            ExpectedSize = totalSize
+                        },
+                        output,
+                        false,
+                        null,
+                        null,
+                        CancellationToken.None).GetAwaiter().GetResult();
+                    Check(
+                        string.Equals(result, finalPath, StringComparison.OrdinalIgnoreCase),
+                        "rozpracovaný soubor se při povoleném přejmenování neopustí");
+                    Check(server.RequestedStart == partialSize, "HTTP přenos naváže přesně za uloženou částí");
+                    Check(
+                        File.Exists(result) &&
+                        new FileInfo(result).Length == totalSize &&
+                        !File.Exists(finalPath + ".part"),
+                        "navázaný přenos vytvoří jeden úplný výsledný soubor");
+                }
+                finally
+                {
+                    try { Directory.Delete(output, true); } catch { }
+                }
+            }
+        }
+
+        private static void TestCompletePartPromotion()
+        {
+            string output = Path.Combine(Path.GetTempPath(), "mv-media-complete-part-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(output);
+            const int totalSize = 128 * 1024;
+            string finalPath = Path.Combine(output, "complete-test.bin");
+            using (FileStream partial = File.Create(finalPath + ".part"))
+                partial.SetLength(totalSize);
+
+            using (RangeHttpServer server = new RangeHttpServer(totalSize, true))
+            {
+                try
+                {
+                    string result = DirectDownloadService.DownloadAsync(
+                        new DirectDownloadItem
+                        {
+                            Provider = "Lokální test",
+                            SourceUrl = server.Url,
+                            DownloadUrl = server.Url,
+                            FileName = "complete-test.bin",
+                            ExpectedSize = totalSize
+                        },
+                        output,
+                        false,
+                        null,
+                        null,
+                        CancellationToken.None).GetAwaiter().GetResult();
+                    Check(server.RequestedStart == totalSize, "úplná část se ověří požadavkem Range");
+                    Check(
+                        File.Exists(result) &&
+                        new FileInfo(result).Length == totalSize &&
+                        !File.Exists(finalPath + ".part"),
+                        "HTTP 416 povýší již úplnou část na výsledný soubor");
+                }
+                finally
+                {
+                    try { Directory.Delete(output, true); } catch { }
+                }
+            }
+        }
+
+        private static void TestNumberedDirectResume()
+        {
+            string output = Path.Combine(Path.GetTempPath(), "mv-media-numbered-resume-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(output);
+            const int totalSize = 256 * 1024;
+            const int partialSize = 48 * 1024;
+            string originalPath = Path.Combine(output, "resume-test.bin");
+            string numberedPath = Path.Combine(output, "resume-test (2).bin");
+            File.WriteAllText(originalPath, "původní výsledek");
+            using (FileStream partial = File.Create(numberedPath + ".part"))
+                partial.SetLength(partialSize);
+
+            using (RangeHttpServer server = new RangeHttpServer(totalSize, false))
+            {
+                try
+                {
+                    string result = DirectDownloadService.DownloadAsync(
+                        new DirectDownloadItem
+                        {
+                            Provider = "Lokální test",
+                            SourceUrl = server.Url,
+                            DownloadUrl = server.Url,
+                            FileName = "resume-test.bin",
+                            ExpectedSize = totalSize
+                        },
+                        output,
+                        false,
+                        null,
+                        null,
+                        CancellationToken.None).GetAwaiter().GetResult();
+                    Check(
+                        string.Equals(result, numberedPath, StringComparison.OrdinalIgnoreCase),
+                        "číslovaný rozpracovaný soubor dostane přednost před novým názvem");
+                    Check(server.RequestedStart == partialSize, "číslovaný .part pokračuje od správného místa");
+                    Check(
+                        File.Exists(result) &&
+                        new FileInfo(result).Length == totalSize &&
+                        !File.Exists(numberedPath + ".part"),
+                        "číslované navázání dokončí původní rozpracovaný soubor");
+                }
+                finally
+                {
+                    try { Directory.Delete(output, true); } catch { }
+                }
             }
         }
 
@@ -437,6 +573,123 @@ namespace MVMediaStudio.Tests
                         return;
                     matched = value == end[matched] ? matched + 1 : value == end[0] ? 1 : 0;
                 }
+            }
+        }
+
+        private sealed class RangeHttpServer : IDisposable
+        {
+            private readonly TcpListener listener;
+            private readonly Task worker;
+            private readonly int payloadSize;
+            private readonly bool rejectCompleteRange;
+            private TcpClient client;
+
+            public RangeHttpServer(int payloadSize, bool rejectCompleteRange)
+            {
+                this.payloadSize = payloadSize;
+                this.rejectCompleteRange = rejectCompleteRange;
+                listener = new TcpListener(IPAddress.Loopback, 0);
+                listener.Start();
+                int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+                Url = "http://127.0.0.1:" + port + "/range.bin";
+                worker = Task.Run((Action)Serve);
+            }
+
+            public string Url { get; private set; }
+            public long RequestedStart { get; private set; } = -1;
+
+            public void Dispose()
+            {
+                try { if (client != null) client.Close(); } catch { }
+                try { listener.Stop(); } catch { }
+                try { worker.Wait(2000); } catch { }
+            }
+
+            private void Serve()
+            {
+                try
+                {
+                    client = listener.AcceptTcpClient();
+                    using (NetworkStream stream = client.GetStream())
+                    {
+                        string headers = ReadRequestHeaders(stream);
+                        RequestedStart = ParseRangeStart(headers);
+                        if (rejectCompleteRange && RequestedStart == payloadSize)
+                        {
+                            WriteAscii(
+                                stream,
+                                "HTTP/1.1 416 Range Not Satisfiable\r\n" +
+                                "Content-Range: bytes */" + payloadSize + "\r\n" +
+                                "Content-Length: 0\r\n" +
+                                "Connection: close\r\n\r\n");
+                            return;
+                        }
+
+                        int start = RequestedStart >= 0 ? (int)Math.Min(payloadSize, RequestedStart) : 0;
+                        int remaining = payloadSize - start;
+                        string status = start > 0 ? "206 Partial Content" : "200 OK";
+                        string contentRange = start > 0
+                            ? "Content-Range: bytes " + start + "-" + (payloadSize - 1) + "/" + payloadSize + "\r\n"
+                            : "";
+                        WriteAscii(
+                            stream,
+                            "HTTP/1.1 " + status + "\r\n" +
+                            contentRange +
+                            "Content-Length: " + remaining + "\r\n" +
+                            "Content-Type: application/octet-stream\r\n" +
+                            "Connection: close\r\n\r\n");
+                        byte[] payload = new byte[65536];
+                        while (remaining > 0)
+                        {
+                            int count = Math.Min(payload.Length, remaining);
+                            stream.Write(payload, 0, count);
+                            remaining -= count;
+                        }
+                        stream.Flush();
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            private static string ReadRequestHeaders(Stream stream)
+            {
+                MemoryStream buffer = new MemoryStream();
+                int matched = 0;
+                byte[] end = { 13, 10, 13, 10 };
+                while (matched < end.Length)
+                {
+                    int value = stream.ReadByte();
+                    if (value < 0)
+                        break;
+                    buffer.WriteByte((byte)value);
+                    matched = value == end[matched] ? matched + 1 : value == end[0] ? 1 : 0;
+                }
+                return Encoding.ASCII.GetString(buffer.ToArray());
+            }
+
+            private static long ParseRangeStart(string headers)
+            {
+                foreach (string line in (headers ?? "").Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (!line.StartsWith("Range:", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    int equals = line.IndexOf('=');
+                    int dash = line.IndexOf('-', equals + 1);
+                    long value;
+                    if (equals >= 0 && dash > equals &&
+                        long.TryParse(line.Substring(equals + 1, dash - equals - 1).Trim(), out value))
+                        return value;
+                }
+                return -1;
+            }
+
+            private static void WriteAscii(Stream stream, string value)
+            {
+                byte[] bytes = Encoding.ASCII.GetBytes(value);
+                stream.Write(bytes, 0, bytes.Length);
+                stream.Flush();
             }
         }
     }

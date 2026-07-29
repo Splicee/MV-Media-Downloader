@@ -46,6 +46,11 @@ namespace MVMediaStudio.Tests
 
             ToolService service = new ToolService();
             tools = service.Check();
+            if (!tools.HasYtDlp)
+            {
+                Log("yt-dlp chybí, spouštím stejnou ověřenou instalaci jako aplikace.");
+                await service.InstallYtDlpAsync(ToolProgress);
+            }
             if (!tools.HasFfmpeg || !tools.HasFfprobe)
             {
                 Log("FFmpeg chybí, spouštím stejnou ověřenou instalaci jako aplikace.");

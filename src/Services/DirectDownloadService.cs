@@ -189,7 +189,7 @@ namespace MVMediaStudio.Services
             for (int number = 2; number < 10000; number++)
             {
                 string candidate = Path.Combine(directory, stem + " (" + number + ")" + extension);
-                if (!File.Exists(candidate) && !File.Exists(candidate + ".part"))
+                if (!File.Exists(candidate))
                     return candidate;
             }
             return Path.Combine(directory, stem + "-" + DateTime.Now.ToString("yyyyMMddHHmmss") + extension);

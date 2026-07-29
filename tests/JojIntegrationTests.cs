@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using MVMediaStudio.Core;
@@ -13,7 +15,7 @@ namespace MVMediaStudio.Tests
 {
     internal static class JojIntegrationTests
     {
-        private const string EpisodeUrl = "https://www.joj.sk/relacia/7-krimi/epizoda/165668-krimi";
+        private const string ArchiveUrl = "https://www.joj.sk/relacie/7-krimi/epizody";
 
         public static int Main()
         {
@@ -44,9 +46,10 @@ namespace MVMediaStudio.Tests
             Require(tools.HasYtDlp, "Chybí yt-dlp.");
             Require(tools.HasFfmpeg && tools.HasFfprobe, "Chybí FFmpeg nebo FFprobe.");
 
-            DownloadUrlResolution resolution = await JojUrlResolver.ResolveAsync(new[] { EpisodeUrl });
+            string episodeUrl = await FindCurrentEpisodeAsync();
+            DownloadUrlResolution resolution = await JojUrlResolver.ResolveAsync(new[] { episodeUrl });
             Require(resolution.Urls.Count == 1 && resolution.Urls[0].StartsWith("https://media.joj.sk/embed/", StringComparison.OrdinalIgnoreCase), "Odkaz epizody se nepřevedl na veřejný přehrávač JOJ.");
-            report.AppendLine("Zdroj: " + EpisodeUrl);
+            report.AppendLine("Zdroj: " + episodeUrl);
             report.AppendLine("Převedeno: " + resolution.Urls[0]);
 
             DownloadOptions options = new DownloadOptions
@@ -83,6 +86,21 @@ namespace MVMediaStudio.Tests
             Console.WriteLine("JOJ test prošel.");
             Console.WriteLine("REPORT=" + reportPath);
             return 0;
+        }
+
+        private static async Task<string> FindCurrentEpisodeAsync()
+        {
+            using (HttpClient client = new HttpClient())
+            {
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("MV-Media-Downloader-Integration-Test/1.0");
+                string html = await client.GetStringAsync(ArchiveUrl);
+                Match match = Regex.Match(
+                    html,
+                    @"https://www\.joj\.sk/relacia/7-krimi/epizoda/[0-9]+-[^""'<>\s]+",
+                    RegexOptions.IgnoreCase);
+                Require(match.Success, "Ve veřejném archivu JOJ nebyla nalezena aktuální epizoda.");
+                return match.Value;
+            }
         }
 
         private static void Require(bool condition, string message)

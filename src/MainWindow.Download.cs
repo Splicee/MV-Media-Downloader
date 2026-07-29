@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -391,6 +392,8 @@ namespace MVMediaStudio
                     foreach (DownloadRoute route in directRoutes)
                     {
                         operationCancellation.Token.ThrowIfCancellationRequested();
+                        downloadCanApplyRate = true;
+                        UpdateDownloadButtons();
                         DirectDownloadItem item = null;
                         string downloadedPath = "";
                         bool sourceSkipped = false;
@@ -704,6 +707,7 @@ namespace MVMediaStudio
                 SetDownloadLiveLog("[" + progress.Provider + "] " +
                     (progress.TotalBytes > 0 ? percentage.ToString("0.#") + "% " : "") +
                     FormatByteSize(progress.BytesReceived) + " · " + FormatTransferSpeed(progress.BytesPerSecond));
+                UpdateDownloadButtons();
             }));
         }
 
@@ -724,6 +728,7 @@ namespace MVMediaStudio
                     Theme.Primary);
                 SetDownloadLiveLog(
                     "[FFmpeg] " + item.FileName + " · " + progress.ProfileLabel + " · " + percentage.ToString("0.#") + " %");
+                UpdateDownloadButtons();
             }));
         }
 

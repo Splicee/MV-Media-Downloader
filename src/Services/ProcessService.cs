@@ -67,14 +67,17 @@ namespace MVMediaStudio.Services
                     return "";
                 }
                 process.WaitForExit();
+                bool drained;
                 try
                 {
-                    Task.WaitAll(new Task[] { standardOutput, standardError }, 3000);
+                    drained = Task.WaitAll(new Task[] { standardOutput, standardError }, 3000);
                 }
                 catch
                 {
                     return "";
                 }
+                if (!drained)
+                    return "";
                 return (standardOutput.Result + standardError.Result).Trim();
             }
         }

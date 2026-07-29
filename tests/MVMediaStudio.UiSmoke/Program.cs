@@ -1,6 +1,8 @@
 using System;
+using System.Collections;
 using System.IO;
 using System.Reflection;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -31,6 +33,7 @@ namespace MVMediaStudio.UiSmoke
                 new WindowInteropHelper(mainWindow).EnsureHandle();
                 Measure(mainWindow, 1360, 860);
                 Measure(mainWindow, 960, 700);
+                VerifyInteractiveStates(mainWindow);
 
                 Assembly assembly = typeof(MVMediaStudio.MainWindow).Assembly;
                 CreateDialog(assembly, "MVMediaStudio.UI.WebshareLoginDialog", mainWindow, "");
@@ -108,6 +111,100 @@ namespace MVMediaStudio.UiSmoke
             Render(window, Path.Combine(directory, "conversion-light-advanced.png"));
         }
 
+        private static void VerifyInteractiveStates(MVMediaStudio.MainWindow window)
+        {
+            FrameworkElement downloadView = FindView(window, "DownloadViewControl");
+            TextBox urlBox = Find<TextBox>(downloadView, "DownloadUrlBox");
+            Button start = Find<Button>(downloadView, "DownloadStartButton");
+            Button cancel = Find<Button>(downloadView, "DownloadCancelButton");
+            ComboBox format = Find<ComboBox>(downloadView, "DownloadFormatCombo");
+            CheckBox limitEnabled = Find<CheckBox>(downloadView, "DownloadLimitEnabledCheck");
+            TextBox rateValue = Find<TextBox>(downloadView, "DownloadRateValueBox");
+
+            Check(!start.IsEnabled && !cancel.IsEnabled, "prázdné stahování má bezpečně vypnutá tlačítka");
+            urlBox.Text = "https://example.com/video";
+            Check(start.IsEnabled, "platný odkaz aktivuje spuštění");
+
+            Invoke(window, "BeginCancellableOperation", "download");
+            SetField(window, "activeDownloadEngine", "direct");
+            SetField(window, "downloadCanApplyRate", true);
+            SetField(window, "appliedDownloadRateLimit", "3000K");
+            Invoke(window, "SetBusy", true, "UI test stahování");
+            Check(cancel.IsEnabled, "probíhající stahování aktivuje Zrušit");
+            Check(!urlBox.IsEnabled && !format.IsEnabled, "během stahování se nemění zachycené volby");
+            Check(limitEnabled.IsEnabled && rateValue.IsEnabled, "limit rychlosti zůstává živě dostupný");
+
+            limitEnabled.IsChecked = true;
+            rateValue.Text = "3500";
+            Invoke(window, "ApplyDownloadRateNow");
+            object rateControl = GetField(window, "directRateControl");
+            long bytesPerSecond = Convert.ToInt64(
+                rateControl.GetType().GetMethod(
+                    "ReadBytesPerSecond",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).Invoke(
+                        rateControl,
+                        null));
+            Check(bytesPerSecond == 3500L * 1024, "přímý přenos přijme nový limit bez restartu");
+            CancellationTokenSource active = (CancellationTokenSource)GetField(window, "activeCancellation");
+            CancellationTokenSource root = (CancellationTokenSource)GetField(window, "operationCancellation");
+            Check(!active.IsCancellationRequested && !root.IsCancellationRequested, "živá změna přímého přenosu není zrušení");
+
+            SetField(window, "activeDownloadEngine", "ytdlp");
+            SetField(window, "downloadCanApplyRate", true);
+            SetField(window, "appliedDownloadRateLimit", "3500K");
+            rateValue.Text = "4000";
+            Invoke(window, "ApplyDownloadRateNow");
+            active = (CancellationTokenSource)GetField(window, "activeCancellation");
+            root = (CancellationTokenSource)GetField(window, "operationCancellation");
+            Check(active.IsCancellationRequested && !root.IsCancellationRequested, "yt-dlp restartuje jen aktuální přenos");
+            Check(Convert.ToBoolean(GetField(window, "downloadRateRestartRequested")), "změna yt-dlp je označena jako navázání");
+
+            cancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Check(root.IsCancellationRequested, "tlačítko Zrušit zruší celou úlohu");
+            Check(!Convert.ToBoolean(GetField(window, "downloadRateRestartRequested")), "uživatelské zrušení se nezamění za změnu rychlosti");
+            Invoke(window, "EndCancellableOperation");
+            Invoke(window, "SetBusy", false, "UI test dokončen");
+            limitEnabled.IsChecked = false;
+            urlBox.Clear();
+
+            FrameworkElement conversionView = FindView(window, "ConversionViewControl");
+            IList jobs = (IList)GetField(window, "conversionJobs");
+            Type jobType = typeof(MVMediaStudio.MainWindow).Assembly.GetType("MVMediaStudio.Core.ConversionJob", true);
+            jobs.Add(Activator.CreateInstance(
+                jobType,
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null,
+                new object[] { Path.Combine(Path.GetTempPath(), "ui-test-video.mp4") },
+                null));
+            Invoke(window, "UpdateConversionQueue");
+            Button conversionStart = Find<Button>(conversionView, "ConversionStartButton");
+            Button conversionCancel = Find<Button>(conversionView, "ConversionCancelButton");
+            DataGrid conversionGrid = Find<DataGrid>(conversionView, "ConversionGrid");
+            Check(conversionStart.IsEnabled, "naplněná fronta aktivuje konverzi");
+
+            Invoke(window, "BeginCancellableOperation", "conversion");
+            Invoke(window, "SetBusy", true, "UI test konverze");
+            Check(conversionCancel.IsEnabled && !conversionGrid.IsEnabled, "konverze má funkční Zrušit a zamčenou frontu");
+            conversionCancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            root = (CancellationTokenSource)GetField(window, "operationCancellation");
+            Check(root.IsCancellationRequested, "Zrušit v konverzi používá vlastní aktivní úlohu");
+            Invoke(window, "EndCancellableOperation");
+            Invoke(window, "SetBusy", false, "UI test dokončen");
+            jobs.Clear();
+            Invoke(window, "UpdateConversionQueue");
+
+            Invoke(window, "ShowDownloadLog");
+            Invoke(window, "ShowConversionLog");
+            Border downloadLog = Find<Border>(downloadView, "DownloadLogCard");
+            Border conversionLog = Find<Border>(conversionView, "ConversionLogCard");
+            Invoke(window, "ToggleConversionLog");
+            Check(
+                downloadLog.Visibility == Visibility.Visible &&
+                conversionLog.Visibility == Visibility.Collapsed,
+                "logy stahování a konverze jsou nezávislé");
+            Invoke(window, "ToggleDownloadLog");
+        }
+
         private static void RenderDownloadActivity(MVMediaStudio.MainWindow window, string path)
         {
             FrameworkElement view = window.FindName("DownloadViewControl") as FrameworkElement;
@@ -169,6 +266,49 @@ namespace MVMediaStudio.UiSmoke
             if (method == null)
                 throw new MissingMethodException(target.GetType().FullName, name);
             method.Invoke(target, arguments);
+        }
+
+        private static FrameworkElement FindView(Window window, string name)
+        {
+            FrameworkElement view = window.FindName(name) as FrameworkElement;
+            if (view == null)
+                throw new InvalidOperationException("Obrazovku nelze najít: " + name);
+            return view;
+        }
+
+        private static T Find<T>(FrameworkElement view, string name) where T : FrameworkElement
+        {
+            T element = view.FindName(name) as T;
+            if (element == null)
+                throw new InvalidOperationException("Prvek nelze najít: " + name);
+            return element;
+        }
+
+        private static object GetField(object target, string name)
+        {
+            FieldInfo field = target.GetType().GetField(
+                name,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (field == null)
+                throw new MissingFieldException(target.GetType().FullName, name);
+            return field.GetValue(target);
+        }
+
+        private static void SetField(object target, string name, object value)
+        {
+            FieldInfo field = target.GetType().GetField(
+                name,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (field == null)
+                throw new MissingFieldException(target.GetType().FullName, name);
+            field.SetValue(target, value);
+        }
+
+        private static void Check(bool value, string name)
+        {
+            if (!value)
+                throw new InvalidOperationException("UI test selhal: " + name);
+            Console.WriteLine("OK: " + name);
         }
 
         private static string ArgumentValue(string[] arguments, string name)

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using MVMediaStudio.Core;
@@ -18,6 +20,20 @@ namespace MVMediaStudio.Tests
         {
             if (arguments.Length == 1 && arguments[0] == "--unicode-output-helper")
                 return WriteUnicodeProcessOutput();
+            if (arguments.Length == 1 && arguments[0] == "--capture-stress-helper")
+                return WriteCaptureStressOutput();
+            if (arguments.Length == 1 && arguments[0] == "--capture-timeout-helper")
+            {
+                Thread.Sleep(30000);
+                return 0;
+            }
+            if (arguments.Length == 1 && arguments[0] == "--capture-orphan-child")
+            {
+                Thread.Sleep(15000);
+                return 0;
+            }
+            if (arguments.Length == 2 && arguments[0] == "--capture-orphan-helper")
+                return StartCaptureOrphan(arguments[1]);
 
             int helperResult;
             if (DownloadControlTests.TryRunHelper(arguments, out helperResult))
@@ -35,8 +51,10 @@ namespace MVMediaStudio.Tests
             TestJojResolver();
             TestConversion();
             TestMediaFileSupport();
+            TestStorage();
             TestUpdateMetadata();
             TestUnicodeProcessOutput();
+            TestProcessCapture();
             failures += DownloadControlTests.Run();
             Console.WriteLine(failures == 0 ? "Všechny testy prošly." : "Počet chyb: " + failures);
             return failures == 0 ? 0 : 1;
@@ -57,6 +75,37 @@ namespace MVMediaStudio.Tests
                     Environment.GetEnvironmentVariable("PYTHONIOENCODING"));
                 error.WriteLine("STDERR:Čeština zůstává čitelná");
             }
+            return 0;
+        }
+
+        private static int WriteCaptureStressOutput()
+        {
+            UTF8Encoding utf8 = new UTF8Encoding(false);
+            using (StreamWriter error = new StreamWriter(Console.OpenStandardError(), utf8))
+            using (StreamWriter output = new StreamWriter(Console.OpenStandardOutput(), utf8))
+            {
+                for (int index = 0; index < 8192; index++)
+                    error.WriteLine("ERR-" + index.ToString("00000") + "-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+                error.Flush();
+                output.WriteLine("CAPTURE-STDOUT-OK");
+                output.Flush();
+            }
+            return 0;
+        }
+
+        private static int StartCaptureOrphan(string markerPath)
+        {
+            string executable;
+            List<string> arguments = SelfArguments(out executable, "--capture-orphan-child");
+            Process child = Process.Start(new ProcessStartInfo
+            {
+                FileName = executable,
+                Arguments = ArgumentUtilities.Join(arguments),
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            File.WriteAllText(markerPath, child.Id.ToString(), Encoding.ASCII);
+            Console.WriteLine("ORPHAN-STARTED");
             return 0;
         }
 
@@ -81,6 +130,76 @@ namespace MVMediaStudio.Tests
             True(standardOutput.Contains("STDOUT:Příliš žluťoučký kůň ščěř"), "log zachová české znaky ze standardního výstupu");
             True(standardError.Contains("STDERR:Čeština zůstává čitelná"), "log zachová české znaky z chybového výstupu");
             True(standardOutput.Contains("ENV:1|utf-8"), "procesy dostanou vynucené UTF-8 prostředí");
+        }
+
+        private static void TestProcessCapture()
+        {
+            string executable;
+            List<string> stressArguments = SelfArguments(out executable, "--capture-stress-helper");
+            Stopwatch stressWatch = Stopwatch.StartNew();
+            string output = ProcessService.Capture(executable, stressArguments, 8000);
+            stressWatch.Stop();
+            True(
+                output.Contains("CAPTURE-STDOUT-OK") && output.Contains("ERR-08191"),
+                "krátký proces souběžně odčerpává standardní i chybový výstup");
+            True(stressWatch.ElapsedMilliseconds < 6000, "souběžný výstup nezablokuje kontrolu nástroje");
+
+            List<string> timeoutArguments = SelfArguments(out executable, "--capture-timeout-helper");
+            Stopwatch timeoutWatch = Stopwatch.StartNew();
+            string timedOut = ProcessService.Capture(executable, timeoutArguments, 250);
+            timeoutWatch.Stop();
+            Equal("", timedOut, "proces po časovém limitu nevrátí neúplný výstup");
+            True(timeoutWatch.ElapsedMilliseconds < 3000, "časový limit skutečně ukončí zablokovaný proces");
+
+            string marker = Path.Combine(Path.GetTempPath(), "mv-media-capture-orphan-" + Guid.NewGuid().ToString("N") + ".pid");
+            int childPid = 0;
+            try
+            {
+                List<string> orphanArguments = SelfArguments(out executable, "--capture-orphan-helper", marker);
+                Stopwatch orphanWatch = Stopwatch.StartNew();
+                string orphanOutput = ProcessService.Capture(executable, orphanArguments, 5000);
+                orphanWatch.Stop();
+                if (File.Exists(marker))
+                    int.TryParse(File.ReadAllText(marker), out childPid);
+                Equal("", orphanOutput, "zděděná výstupní roura nevrátí neúplná data");
+                True(
+                    orphanWatch.ElapsedMilliseconds >= 2500 && orphanWatch.ElapsedMilliseconds < 6000,
+                    "potomek nemůže držet kontrolu nástroje zablokovanou");
+            }
+            finally
+            {
+                if (childPid > 0)
+                {
+                    try
+                    {
+                        using (Process child = Process.GetProcessById(childPid))
+                        {
+                            if (!child.HasExited)
+                                child.Kill(true);
+                            child.WaitForExit(3000);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+                try { File.Delete(marker); } catch { }
+            }
+        }
+
+        private static List<string> SelfArguments(out string executable, params string[] values)
+        {
+            executable = Environment.ProcessPath;
+            List<string> arguments = new List<string>();
+            if (string.Equals(
+                Path.GetFileNameWithoutExtension(executable),
+                "dotnet",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                arguments.Add(Assembly.GetExecutingAssembly().Location);
+            }
+            arguments.AddRange(values);
+            return arguments;
         }
 
         private static void TestDownloadOutputParser()
@@ -169,6 +288,23 @@ namespace MVMediaStudio.Tests
             const string playUrl = "https://play.joj.sk/player/qCI7gycOYCiUTiuYTrsQ?type=VIDEO";
             DownloadUrlResolution play = JojUrlResolver.ResolveAsync(new[] { playUrl }).GetAwaiter().GetResult();
             Equal(playUrl, play.Urls[0], "JOJ Play odkaz předá specializovanému konektoru");
+
+            CancellationTokenSource cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+            bool cancelled = false;
+            try
+            {
+                JojUrlResolver.ResolveAsync(new[] { playUrl }, cancellation.Token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                cancelled = true;
+            }
+            finally
+            {
+                cancellation.Dispose();
+            }
+            True(cancelled, "kontrolu odkazů JOJ lze okamžitě zrušit");
         }
 
         private static void TestDownloadPreset()
@@ -391,6 +527,8 @@ namespace MVMediaStudio.Tests
                 List<string> args = ConversionArgumentBuilder.Build(options, out output);
                 True(args.Contains("libx264"), "výchozí kodek H.264");
                 True(args.Contains("-crf") && args.Contains("23"), "výchozí CRF");
+                True(args.Contains("-pix_fmt") && args.Contains("yuv420p"), "konverze používá kompatibilní barevný formát");
+                True(args.Contains("-map_metadata") && args.Contains("-map_chapters"), "konverze zachová metadata a kapitoly");
                 True(args.Contains("+faststart"), "MP4 faststart");
                 True(output.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase), "výstup MP4");
 
@@ -409,10 +547,12 @@ namespace MVMediaStudio.Tests
                 args = ConversionArgumentBuilder.Build(options, out output);
                 True(args.Contains("flac") && !args.Contains("-b:a"), "FLAC nepoužívá ztrátový audio bitrate");
 
+                options.Format = "mp4";
                 options.Codec = "h265";
                 options.AudioCodec = "mp3";
                 args = ConversionArgumentBuilder.Build(options, out output);
                 True(args.Contains("libx265") && args.Contains("libmp3lame"), "H.265 s MP3 používá běžné enkodéry");
+                True(args.Contains("-tag:v") && args.Contains("hvc1"), "H.265 v MP4 používá kompatibilní značku hvc1");
 
                 options.Codec = "av1";
                 options.AudioCodec = "opus";
@@ -428,6 +568,27 @@ namespace MVMediaStudio.Tests
             finally
             {
                 try { Directory.Delete(temp, true); } catch { }
+            }
+        }
+
+        private static void TestStorage()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "mv-media-storage-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                StorageService.EnsureWritableDirectory(directory);
+                True(Directory.Exists(directory), "kontrola výstupu připraví zapisovatelnou složku");
+                True(
+                    Directory.GetFiles(directory, ".mv-write-*.tmp").Length == 0,
+                    "kontrola zápisu po sobě odstraní zkušební soubor");
+                string incomplete = Path.Combine(directory, "incomplete.mp4");
+                File.WriteAllText(incomplete, "partial");
+                StorageService.DeleteIncompleteFile(incomplete);
+                True(!File.Exists(incomplete), "zrušená konverze odstraní neúplný výsledný soubor");
+            }
+            finally
+            {
+                try { Directory.Delete(directory, true); } catch { }
             }
         }
 
