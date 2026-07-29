@@ -23,6 +23,7 @@ namespace MVMediaStudio.Core
         public string ConversionAudioCodec = "aac";
         public string ConversionAudioBitrate = "192k";
         public string Theme = "dark";
+        public string LastPage = "download";
         public double WindowWidth = 1360;
         public double WindowHeight = 860;
         public bool AdvancedMode;
@@ -64,6 +65,7 @@ namespace MVMediaStudio.Core
                 settings.ConversionAudioCodec = Get(values, "ConversionAudioCodec", settings.ConversionAudioCodec);
                 settings.ConversionAudioBitrate = Get(values, "ConversionAudioBitrate", settings.ConversionAudioBitrate);
                 settings.Theme = Get(values, "Theme", settings.Theme);
+                settings.LastPage = NormalizePage(Get(values, "LastPage", settings.LastPage));
                 settings.WindowWidth = GetDouble(values, "WindowWidth", settings.WindowWidth, 920, 7680);
                 settings.WindowHeight = GetDouble(values, "WindowHeight", settings.WindowHeight, 680, 4320);
                 settings.AdvancedMode = GetBool(values, "AdvancedMode", settings.AdvancedMode);
@@ -103,6 +105,7 @@ namespace MVMediaStudio.Core
                     "ConversionAudioCodec=" + ConversionAudioCodec,
                     "ConversionAudioBitrate=" + ConversionAudioBitrate,
                     "Theme=" + Theme,
+                    "LastPage=" + NormalizePage(LastPage),
                     "WindowWidth=" + WindowWidth.ToString("0.##", CultureInfo.InvariantCulture),
                     "WindowHeight=" + WindowHeight.ToString("0.##", CultureInfo.InvariantCulture),
                     "AdvancedMode=" + AdvancedMode,
@@ -154,6 +157,13 @@ namespace MVMediaStudio.Core
                 !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out parsed))
                 return fallback;
             return Math.Max(minimum, Math.Min(maximum, parsed));
+        }
+
+        private static string NormalizePage(string value)
+        {
+            return string.Equals(value, "conversion", StringComparison.OrdinalIgnoreCase)
+                ? "conversion"
+                : "download";
         }
     }
 }

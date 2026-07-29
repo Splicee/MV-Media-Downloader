@@ -124,6 +124,34 @@ namespace MVMediaStudio.UiSmoke
             Check(!start.IsEnabled && !cancel.IsEnabled, "prázdné stahování má bezpečně vypnutá tlačítka");
             urlBox.Text = "https://example.com/video";
             Check(start.IsEnabled, "platný odkaz aktivuje spuštění");
+            Invoke(window, "AppendDownloadInput", "https://example.org/audio");
+            TextBlock urlCount = Find<TextBlock>(downloadView, "DownloadUrlCount");
+            Check(
+                urlBox.Text.Contains("https://example.com/video") &&
+                urlBox.Text.Contains("https://example.org/audio") &&
+                urlCount.Text == "2 odkazů",
+                "další vložený odkaz zachová předchozí seznam");
+
+            Invoke(window, "Navigate", "conversion");
+            Invoke(window, "SaveSettings");
+            Type appPaths = typeof(MVMediaStudio.MainWindow).Assembly.GetType(
+                "MVMediaStudio.Core.AppPaths",
+                true);
+            string settingsPath = Convert.ToString(
+                appPaths.GetField("SettingsPath", BindingFlags.Public | BindingFlags.Static).GetValue(null));
+            Check(
+                File.ReadAllText(settingsPath).Contains("LastPage=conversion"),
+                "poslední otevřená karta se uloží");
+            Invoke(window, "Navigate", "download");
+
+            string completedFile = Path.Combine(Path.GetDirectoryName(settingsPath), "hotovo.mp4");
+            File.WriteAllText(completedFile, "test");
+            Invoke(window, "RememberCompletedDownloadPath", completedFile);
+            Button revealLast = Find<Button>(downloadView, "DownloadRevealLastButton");
+            Check(revealLast.Visibility == Visibility.Visible, "dokončený soubor nabídne zobrazení ve složce");
+            File.Delete(completedFile);
+            revealLast.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Check(revealLast.Visibility == Visibility.Collapsed, "nedostupný poslední soubor se bezpečně skryje");
 
             Invoke(window, "BeginCancellableOperation", "download");
             SetField(window, "activeDownloadEngine", "direct");

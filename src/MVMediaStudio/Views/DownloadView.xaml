@@ -406,14 +406,32 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock
                                 x:Name="DownloadStatusTitle"
                                 Style="{StaticResource SmallHeadingStyle}"
                                 Text="Připraveno ke stažení" />
+                            <Button
+                                x:Name="DownloadRevealLastButton"
+                                Grid.Column="1"
+                                MinHeight="32"
+                                Margin="12,0,16,0"
+                                Padding="10,5"
+                                ToolTip="Zobrazit poslední dokončený soubor ve složce"
+                                Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        FontFamily="Segoe MDL2 Assets"
+                                        FontSize="13"
+                                        Text="&#xE838;" />
+                                    <TextBlock Margin="7,0,0,0" VerticalAlignment="Center" Text="Ukázat soubor" />
+                                </StackPanel>
+                            </Button>
                             <TextBlock
                                 x:Name="DownloadProgressPercent"
-                                Grid.Column="1"
+                                Grid.Column="2"
                                 VerticalAlignment="Center"
                                 FontSize="17"
                                 FontWeight="SemiBold"

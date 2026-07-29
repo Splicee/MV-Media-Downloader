@@ -74,18 +74,23 @@ namespace MVMediaStudio
             InitializeDownloadView();
             InitializeConversionView();
             InitializeRepairMenu();
-            Navigate("download");
+            Navigate(settings.LastPage);
             bool startWithConversion = false;
+            bool startWithDownload = false;
             foreach (string argument in Environment.GetCommandLineArgs())
             {
                 if (string.Equals(argument, "--conversion", StringComparison.OrdinalIgnoreCase))
                     startWithConversion = true;
+                else if (string.Equals(argument, "--download", StringComparison.OrdinalIgnoreCase))
+                    startWithDownload = true;
                 else if (string.Equals(argument, "--advanced", StringComparison.OrdinalIgnoreCase))
                     settings.AdvancedMode = true;
             }
             ApplyAdvancedMode();
             if (startWithConversion)
                 Navigate("conversion");
+            else if (startWithDownload)
+                Navigate("download");
 
             SizeChanged += delegate { UpdateResponsiveLayout(); };
             StateChanged += delegate { UpdateMaximizeGlyph(); };
@@ -200,8 +205,9 @@ namespace MVMediaStudio
 
         private void Navigate(string page)
         {
-            currentPage = page;
-            bool download = page == "download";
+            bool download = !string.Equals(page, "conversion", StringComparison.OrdinalIgnoreCase);
+            currentPage = download ? "download" : "conversion";
+            settings.LastPage = currentPage;
             downloadPage.Visibility = download ? Visibility.Visible : Visibility.Collapsed;
             conversionPage.Visibility = download ? Visibility.Collapsed : Visibility.Visible;
             SetNavSelected(downloadNavButton, download);
@@ -355,6 +361,18 @@ namespace MVMediaStudio
             if (eventArgs.Key == Key.F5)
             {
                 await RefreshToolsAsync(true);
+                eventArgs.Handled = true;
+            }
+            else if (Keyboard.Modifiers == ModifierKeys.Control &&
+                (eventArgs.Key == Key.D1 || eventArgs.Key == Key.NumPad1))
+            {
+                Navigate("download");
+                eventArgs.Handled = true;
+            }
+            else if (Keyboard.Modifiers == ModifierKeys.Control &&
+                (eventArgs.Key == Key.D2 || eventArgs.Key == Key.NumPad2))
+            {
+                Navigate("conversion");
                 eventArgs.Handled = true;
             }
             else if (eventArgs.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control)

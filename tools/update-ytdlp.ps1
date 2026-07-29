@@ -8,7 +8,7 @@ $checksumsUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-
 $temporaryPath = "$TargetPath.download"
 
 try {
-    $headers = @{ "User-Agent" = "MV-Media-Downloader-Build/3.3.0" }
+    $headers = @{ "User-Agent" = "MV-Media-Downloader-Build/3.5.0" }
     $checksumResponse = Invoke-WebRequest -UseBasicParsing -Uri $checksumsUrl -Headers $headers
     $checksums = if ($checksumResponse.Content -is [byte[]]) {
         [System.Text.Encoding]::UTF8.GetString($checksumResponse.Content)

@@ -131,6 +131,7 @@
     <ItemGroup>
       <_AppPublishedFiles Include="$(AppPublishDirectory)\**\*" />
       <_Documentation Include="$(RepositoryRoot)\README.md" />
+      <_Documentation Include="$(RepositoryRoot)\CHANGELOG.md" />
       <_Documentation Include="$(RepositoryRoot)\THIRD_PARTY_NOTICES.md" />
     </ItemGroup>
     <Copy

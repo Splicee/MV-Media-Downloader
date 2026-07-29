@@ -45,6 +45,7 @@ namespace MVMediaStudio
         private Button downloadReportButton;
         private Button downloadLogToggle;
         private Button downloadCopyLogButton;
+        private Button downloadRevealLastButton;
         private Button webshareLoginButton;
         private Button jojLoginButton;
         private Border downloadLogCard;
@@ -63,6 +64,7 @@ namespace MVMediaStudio
         private string appliedDownloadRateLimit = "";
         private string activeDownloadEngine = "";
         private string activeDownloadItemName = "";
+        private string lastCompletedDownloadPath = "";
         private readonly DownloadRateControl directRateControl = new DownloadRateControl();
         private StackPanel downloadContent;
         private Grid downloadWorkspace;
@@ -106,6 +108,7 @@ namespace MVMediaStudio
             downloadReportButton = DownloadViewControl.DownloadReportButton;
             downloadLogToggle = DownloadViewControl.DownloadLogToggle;
             downloadCopyLogButton = DownloadViewControl.DownloadCopyLogButton;
+            downloadRevealLastButton = DownloadViewControl.DownloadRevealLastButton;
             downloadStatusTitle = DownloadViewControl.DownloadStatusTitle;
             downloadCurrentItem = DownloadViewControl.DownloadCurrentItem;
             downloadStatusDetail = DownloadViewControl.DownloadStatusDetail;
@@ -188,14 +191,14 @@ namespace MVMediaStudio
             downloadUrlBox.Drop += delegate (object sender, DragEventArgs eventArgs)
             {
                 if (eventArgs.Data.GetDataPresent(DataFormats.Text))
-                    downloadUrlBox.Text = Convert.ToString(eventArgs.Data.GetData(DataFormats.Text));
+                    AppendDownloadInput(Convert.ToString(eventArgs.Data.GetData(DataFormats.Text)));
             };
             DownloadViewControl.PasteButton.Click += delegate
             {
                 try
                 {
                     if (Clipboard.ContainsText())
-                        downloadUrlBox.Text = Clipboard.GetText();
+                        AppendDownloadInput(Clipboard.GetText());
                 }
                 catch { }
             };
@@ -246,6 +249,19 @@ namespace MVMediaStudio
             DownloadViewControl.OpenDownloadFolderButton.Click += delegate
             {
                 OpenDirectory(downloadFolderBox.Text);
+            };
+            downloadRevealLastButton.Click += delegate
+            {
+                if (!string.IsNullOrWhiteSpace(lastCompletedDownloadPath) &&
+                    File.Exists(lastCompletedDownloadPath))
+                {
+                    RevealFile(lastCompletedDownloadPath);
+                    return;
+                }
+
+                lastCompletedDownloadPath = "";
+                downloadRevealLastButton.Visibility = Visibility.Collapsed;
+                footerStatus.Text = "Poslední soubor už není dostupný";
             };
             downloadCookiesCheck.Checked += delegate
             {
@@ -338,6 +354,8 @@ namespace MVMediaStudio
             downloadLogBox.Clear();
             downloadCompletedItems = 0;
             downloadCompletedPaths.Clear();
+            lastCompletedDownloadPath = "";
+            downloadRevealLastButton.Visibility = Visibility.Collapsed;
             downloadProgress.Value = 0;
             downloadProgressPercent.Text = "0 %";
             SetActiveDownloadItem("");
@@ -681,6 +699,7 @@ namespace MVMediaStudio
                 {
                     if (downloadCompletedPaths.Add(progress.OutputPath))
                         downloadCompletedItems++;
+                    RememberCompletedDownloadPath(progress.OutputPath);
                     downloadProgress.Value = 100;
                     downloadProgressPercent.Text = "100 %";
                     AppendDownloadLog(progress.Skipped ? "[Přeskočeno] " + progress.OutputPath : "[Hotovo] " + progress.OutputPath);
@@ -737,6 +756,7 @@ namespace MVMediaStudio
             CommitDownloadLiveLog();
             if (downloadCompletedPaths.Add(result.OutputPath))
                 downloadCompletedItems++;
+            RememberCompletedDownloadPath(result.OutputPath);
             downloadProgress.Value = 100;
             downloadProgressPercent.Text = "100 %";
             SetTaskbarProgress(100, TaskbarItemProgressState.Normal);
@@ -757,6 +777,7 @@ namespace MVMediaStudio
             CommitDownloadLiveLog();
             if (downloadCompletedPaths.Add(path))
                 downloadCompletedItems++;
+            RememberCompletedDownloadPath(path);
             downloadProgress.Value = 100;
             downloadProgressPercent.Text = "100 %";
             AppendDownloadLog("[Originál zachován] " + path);
@@ -807,6 +828,7 @@ namespace MVMediaStudio
                     string completedPath = line.Substring(DownloadOutputParser.CompletedPathPrefix.Length);
                     if (downloadCompletedPaths.Add(completedPath))
                         downloadCompletedItems++;
+                    RememberCompletedDownloadPath(completedPath);
                     downloadCanApplyRate = false;
                     downloadProgress.Value = 100;
                     downloadProgressPercent.Text = "100 %";
@@ -1340,6 +1362,31 @@ namespace MVMediaStudio
         {
             downloadUrlBox.Focus();
             downloadUrlBox.SelectAll();
+        }
+
+        private void AppendDownloadInput(string value)
+        {
+            string incoming = (value ?? "").Trim();
+            if (incoming.Length == 0)
+                return;
+
+            string existing = downloadUrlBox.Text.TrimEnd();
+            downloadUrlBox.Text = existing.Length == 0
+                ? incoming
+                : existing + Environment.NewLine + incoming;
+            downloadUrlBox.CaretIndex = downloadUrlBox.Text.Length;
+            downloadUrlBox.ScrollToEnd();
+            downloadUrlBox.Focus();
+        }
+
+        private void RememberCompletedDownloadPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                return;
+
+            lastCompletedDownloadPath = path;
+            downloadRevealLastButton.ToolTip = "Zobrazit ve složce: " + path;
+            downloadRevealLastButton.Visibility = Visibility.Visible;
         }
 
         private static void SaveLog(string path, string text)

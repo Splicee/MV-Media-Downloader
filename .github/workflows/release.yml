@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag vydání, například v3.3.0
+        description: Tag vydání, například v3.5.0
         required: true
         type: string
 
