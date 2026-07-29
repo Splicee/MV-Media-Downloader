@@ -27,6 +27,9 @@
             ResizeBorderThickness="7"
             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
+    <Window.TaskbarItemInfo>
+        <shell:TaskbarItemInfo />
+    </Window.TaskbarItemInfo>
 
     <Grid x:Name="RootGrid" Background="{DynamicResource WindowBackground}">
         <Grid.RowDefinitions>

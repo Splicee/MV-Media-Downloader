@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shell;
 using MVMediaStudio.Core;
 using MVMediaStudio.Services;
 using MVMediaStudio.UI;
@@ -29,6 +30,7 @@ namespace MVMediaStudio
         private TextBox downloadRateValueBox;
         private CheckBox downloadLimitEnabledCheck;
         private FrameworkElement downloadRateEditor;
+        private TextBlock downloadRateStateText;
         private TextBox downloadFolderBox;
         private CheckBox downloadPlaylistCheck;
         private CheckBox downloadSubtitlesCheck;
@@ -43,6 +45,7 @@ namespace MVMediaStudio
         private Button downloadLogToggle;
         private Button downloadCopyLogButton;
         private Button webshareLoginButton;
+        private Button jojLoginButton;
         private Border downloadLogCard;
         private TextBox downloadLogBox;
         private ProgressBar downloadProgress;
@@ -84,6 +87,7 @@ namespace MVMediaStudio
             downloadQualityCombo = DownloadViewControl.DownloadQualityCombo;
             downloadLimitEnabledCheck = DownloadViewControl.DownloadLimitEnabledCheck;
             downloadRateEditor = DownloadViewControl.DownloadRateEditor;
+            downloadRateStateText = DownloadViewControl.DownloadRateStateText;
             downloadRateValueBox = DownloadViewControl.DownloadRateValueBox;
             downloadApplyRateButton = DownloadViewControl.DownloadApplyRateButton;
             downloadFolderBox = DownloadViewControl.DownloadFolderBox;
@@ -93,6 +97,7 @@ namespace MVMediaStudio
             downloadCookiesCheck = DownloadViewControl.DownloadCookiesCheck;
             downloadCookieBrowserCombo = DownloadViewControl.DownloadCookieBrowserCombo;
             webshareLoginButton = DownloadViewControl.WebshareLoginButton;
+            jojLoginButton = DownloadViewControl.JojLoginButton;
             downloadAdvancedPanel = DownloadViewControl.DownloadAdvancedPanel;
             downloadExtraArgsBox = DownloadViewControl.DownloadExtraArgsBox;
             downloadStartButton = DownloadViewControl.DownloadStartButton;
@@ -144,8 +149,17 @@ namespace MVMediaStudio
             downloadRateEditor.Visibility = downloadLimitEnabledCheck.IsChecked == true
                 ? Visibility.Visible
                 : Visibility.Hidden;
+            downloadRateStateText.Visibility = downloadLimitEnabledCheck.IsChecked == true
+                ? Visibility.Visible
+                : Visibility.Hidden;
+            UpdateDownloadRateState(
+                string.IsNullOrWhiteSpace(appliedDownloadRateLimit)
+                    ? "Potvrď rychlost tlačítkem nebo klávesou Enter."
+                    : "Uloženo: " + DownloadRateLabel(appliedDownloadRateLimit),
+                Theme.Muted);
             downloadFolderBox.Text = settings.DownloadDirectory;
             downloadSubtitlesCheck.IsChecked = settings.Subtitles;
+            downloadPlaylistCheck.IsChecked = settings.Playlist;
             downloadNoOverwriteCheck.IsChecked = settings.NoOverwrite;
             downloadCookiesCheck.IsChecked = settings.UseBrowserCookies;
             downloadCookieBrowserCombo.Visibility = settings.UseBrowserCookies
@@ -209,6 +223,12 @@ namespace MVMediaStudio
             downloadLimitEnabledCheck.Checked += delegate
             {
                 downloadRateEditor.Visibility = Visibility.Visible;
+                downloadRateStateText.Visibility = Visibility.Visible;
+                UpdateDownloadRateState(
+                    string.IsNullOrWhiteSpace(appliedDownloadRateLimit)
+                        ? "Potvrď rychlost tlačítkem nebo klávesou Enter."
+                        : "Uloženo: " + DownloadRateLabel(appliedDownloadRateLimit),
+                    Theme.Muted);
                 downloadRateValueBox.Focus();
                 downloadRateValueBox.SelectAll();
                 UpdateDownloadButtons();
@@ -216,6 +236,7 @@ namespace MVMediaStudio
             downloadLimitEnabledCheck.Unchecked += delegate
             {
                 downloadRateEditor.Visibility = Visibility.Hidden;
+                downloadRateStateText.Visibility = Visibility.Hidden;
                 if (downloadStatusTitle != null)
                     ApplyDownloadRateNow();
                 UpdateDownloadButtons();
@@ -234,7 +255,7 @@ namespace MVMediaStudio
                 downloadCookieBrowserCombo.Visibility = Visibility.Collapsed;
             };
             webshareLoginButton.Click += async delegate { await OpenWebshareLoginAsync(); };
-            DownloadViewControl.JojLoginButton.Click += delegate { OpenJojPlayLogin(); };
+            jojLoginButton.Click += delegate { OpenJojPlayLogin(); };
             downloadStartButton.Click += async delegate { await StartDownloadAsync(); };
             downloadCancelButton.Click += delegate { CancelActiveWork(); };
             downloadReportButton.Click += delegate
@@ -254,6 +275,7 @@ namespace MVMediaStudio
         {
             if (busy)
                 return;
+
             List<string> inputUrls = ValidDownloadUrls();
             if (inputUrls.Count == 0)
             {
@@ -287,49 +309,15 @@ namespace MVMediaStudio
                 downloadCookiesCheck.IsChecked = true;
             if (ytDlpUrls.Count > 0 && !await EnsureYtDlpAsync())
                 return;
-            if (directRoutes.Count > 0 && !await EnsureFfmpegAsync())
+            if (directRoutes.Exists(DirectRouteNeedsFfmpeg) && !await EnsureFfmpegAsync())
                 return;
-
-            downloadLog.Clear();
-            downloadLiveLogLine = "";
-            downloadLogBox.Clear();
-            downloadCompletedItems = 0;
-            downloadCompletedPaths.Clear();
-            downloadProgress.Value = 0;
-            downloadProgressPercent.Text = "0 %";
-            SetActiveDownloadItem("");
-            downloadReportButton.Visibility = Visibility.Collapsed;
-            downloadRateRestartRequested = false;
-            downloadCanApplyRate = false;
-            downloadRateApplyPending = false;
-            SetBusy(true, "Kontroluji odkazy");
-            SetDownloadStatus("Kontroluji odkazy", "Ověřuji zdroj a dostupnost veřejného videa…", Theme.Primary);
-
-            if (ytDlpUrls.Count > 0)
-            {
-                try
-                {
-                    DownloadUrlResolution resolution = await JojUrlResolver.ResolveAsync(ytDlpUrls);
-                    ytDlpUrls = resolution.Urls;
-                    foreach (string note in resolution.Notes)
-                        AppendDownloadLog(note);
-                }
-                catch (Exception error)
-                {
-                    AppPaths.WriteError(error);
-                    AppendDownloadLog(error.Message);
-                    SetBusy(false, "Odkaz není dostupný");
-                    SetDownloadStatus("Odkaz JOJ nelze stáhnout", error.Message, Theme.Danger);
-                    ShowDownloadLog();
-                    return;
-                }
-            }
 
             CaptureDownloadSettings();
             settings.DownloadRateLimit = selectedRateLimit;
+            settings.Save();
             directRateControl.Set(selectedRateLimit);
             appliedDownloadRateLimit = selectedRateLimit;
-            Directory.CreateDirectory(settings.DownloadDirectory);
+
             DownloadOptions options = new DownloadOptions
             {
                 Preset = settings.DownloadPreset,
@@ -344,161 +332,245 @@ namespace MVMediaStudio
                 ExtraArguments = downloadExtraArgsBox.Text
             };
 
-            activeOperation = "download";
-            SetBusy(true, "Probíhá stahování");
-            SetDownloadStatus("Připravuji stahování", inputUrls.Count == 1 ? "Zpracovávám odkaz…" : "Zpracovávám " + inputUrls.Count + " odkazů…", Theme.Primary);
-
+            downloadLog.Clear();
+            downloadLiveLogLine = "";
+            downloadLogBox.Clear();
+            downloadCompletedItems = 0;
+            downloadCompletedPaths.Clear();
+            downloadProgress.Value = 0;
+            downloadProgressPercent.Text = "0 %";
+            SetActiveDownloadItem("");
+            downloadReportButton.Visibility = Visibility.Collapsed;
+            downloadRateRestartRequested = false;
+            downloadCanApplyRate = false;
+            downloadRateApplyPending = false;
+            BeginCancellableOperation("download");
+            SetBusy(true, "Kontroluji odkazy");
+            SetTaskbarProgress(0, TaskbarItemProgressState.Indeterminate);
+            SetDownloadStatus("Kontroluji odkazy", "Ověřuji zdroj a dostupnost veřejného videa…", Theme.Primary);
             int exitCode = unsupportedRoutes.Count > 0 ? 1 : 0;
-            foreach (DownloadRoute route in unsupportedRoutes)
+            string failureTitle = "";
+            string failureDetail = "";
+            Stopwatch elapsed = Stopwatch.StartNew();
+            try
             {
-                AppendDownloadLog("! [" + route.Provider + "] " + route.Message);
-            }
-
-            if (directRoutes.Count > 0)
-            {
-                activeDownloadEngine = "direct";
-                activeCancellation = new CancellationTokenSource();
-                downloadCanApplyRate = true;
-                foreach (DownloadRoute route in directRoutes)
+                if (ytDlpUrls.Count > 0)
                 {
-                    if (activeCancellation.IsCancellationRequested)
-                    {
-                        exitCode = -2;
-                        break;
-                    }
-
-                    DirectDownloadItem item = null;
-                    string downloadedPath = "";
-                    bool sourceSkipped = false;
                     try
                     {
-                        if (route.Kind == DownloadProviderKind.Webshare)
-                            item = await WebshareService.ResolveAsync(route.Url, activeCancellation.Token);
-                        else
-                            item = new DirectDownloadItem
-                            {
-                                Provider = route.Provider,
-                                SourceUrl = route.Url,
-                                DownloadUrl = route.Url,
-                                FileName = DownloadSourceRouter.FileNameFromUrl(route.Url)
-                            };
-                        SetActiveDownloadItem(DownloadOutputParser.DisplayNameFromPath(item.FileName));
-                        AppendDownloadLog("[" + item.Provider + "] " + item.FileName);
-                        downloadedPath = await DirectDownloadService.DownloadAsync(
-                            item,
-                            settings.DownloadDirectory,
-                            options.NoOverwrite,
-                            directRateControl.ReadBytesPerSecond,
-                            delegate (DirectDownloadProgress progress)
-                            {
-                                if (progress.Completed)
-                                {
-                                    sourceSkipped = progress.Skipped;
-                                    return;
-                                }
-                                HandleDirectDownloadProgress(progress);
-                            },
-                            activeCancellation.Token);
-                        downloadCanApplyRate = false;
-                        CommitDownloadLiveLog();
-                        downloadProgress.Value = 0;
-                        downloadProgressPercent.Text = "0 %";
-                        SetDownloadStatus("Připravuji výsledek", item.Provider + " · " + item.FileName, Theme.Primary);
-                        DirectPostProcessResult processed = await DirectMediaPostProcessService.ProcessAsync(
-                            tools.FfmpegPath,
-                            tools.FfprobePath,
-                            downloadedPath,
-                            options.Preset,
-                            options.Quality,
-                            options.Subtitles,
-                            options.NoOverwrite,
-                            sourceSkipped,
-                            delegate (DirectPostProcessProgress progress) { HandleDirectPostProcessProgress(item, progress); },
-                            activeCancellation.Token);
-                        MarkDirectDownloadCompleted(item, processed);
+                        DownloadUrlResolution resolution = await JojUrlResolver.ResolveAsync(
+                            ytDlpUrls,
+                            operationCancellation.Token);
+                        ytDlpUrls = resolution.Urls;
+                        foreach (string note in resolution.Notes)
+                            AppendDownloadLog(note);
                     }
-                    catch (OperationCanceledException)
-                    {
-                        if (!string.IsNullOrWhiteSpace(downloadedPath) && File.Exists(downloadedPath))
-                            AppendDownloadLog("[Zachováno po zrušení] " + downloadedPath);
-                        exitCode = -2;
-                        break;
-                    }
+                    catch (OperationCanceledException) { throw; }
                     catch (Exception error)
                     {
-                        exitCode = 1;
-                        AppPaths.WriteError(error);
-                        AppendDownloadLog("! [" + route.Provider + "] " + error.Message);
-                        if (item != null && !string.IsNullOrWhiteSpace(downloadedPath) && File.Exists(downloadedPath))
-                            MarkDirectDownloadRetained(item, downloadedPath);
+                        failureTitle = "Odkaz JOJ nelze stáhnout";
+                        failureDetail = error.Message;
+                        throw;
                     }
                 }
-                activeCancellation = null;
+
+                StorageService.EnsureWritableDirectory(settings.DownloadDirectory);
+                SetBusy(true, "Probíhá stahování");
+                SetDownloadStatus(
+                    "Připravuji stahování",
+                    inputUrls.Count == 1 ? "Zpracovávám odkaz…" : "Zpracovávám " + inputUrls.Count + " odkazů…",
+                    Theme.Primary);
+
+                foreach (DownloadRoute route in unsupportedRoutes)
+                    AppendDownloadLog("! [" + route.Provider + "] " + route.Message);
+
+                if (directRoutes.Count > 0)
+                {
+                    activeDownloadEngine = "direct";
+                    downloadCanApplyRate = true;
+                    foreach (DownloadRoute route in directRoutes)
+                    {
+                        operationCancellation.Token.ThrowIfCancellationRequested();
+                        DirectDownloadItem item = null;
+                        string downloadedPath = "";
+                        bool sourceSkipped = false;
+                        try
+                        {
+                            if (route.Kind == DownloadProviderKind.Webshare)
+                                item = await WebshareService.ResolveAsync(route.Url, activeCancellation.Token);
+                            else
+                                item = new DirectDownloadItem
+                                {
+                                    Provider = route.Provider,
+                                    SourceUrl = route.Url,
+                                    DownloadUrl = route.Url,
+                                    FileName = DownloadSourceRouter.FileNameFromUrl(route.Url)
+                                };
+                            SetActiveDownloadItem(DownloadOutputParser.DisplayNameFromPath(item.FileName));
+                            AppendDownloadLog("[" + item.Provider + "] " + item.FileName);
+                            downloadedPath = await DirectDownloadService.DownloadAsync(
+                                item,
+                                settings.DownloadDirectory,
+                                options.NoOverwrite,
+                                directRateControl.ReadBytesPerSecond,
+                                delegate (DirectDownloadProgress progress)
+                                {
+                                    if (progress.Completed)
+                                    {
+                                        sourceSkipped = progress.Skipped;
+                                        return;
+                                    }
+                                    HandleDirectDownloadProgress(progress);
+                                },
+                                activeCancellation.Token);
+                            downloadCanApplyRate = false;
+                            CommitDownloadLiveLog();
+                            downloadProgress.Value = 0;
+                            downloadProgressPercent.Text = "0 %";
+                            SetTaskbarProgress(0, TaskbarItemProgressState.Indeterminate);
+                            SetDownloadStatus("Připravuji výsledek", item.Provider + " · " + item.FileName, Theme.Primary);
+                            DirectPostProcessResult processed = await DirectMediaPostProcessService.ProcessAsync(
+                                tools.FfmpegPath,
+                                tools.FfprobePath,
+                                downloadedPath,
+                                options.Preset,
+                                options.Quality,
+                                options.Subtitles,
+                                options.NoOverwrite,
+                                sourceSkipped,
+                                delegate (DirectPostProcessProgress progress) { HandleDirectPostProcessProgress(item, progress); },
+                                activeCancellation.Token);
+                            MarkDirectDownloadCompleted(item, processed);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            if (!string.IsNullOrWhiteSpace(downloadedPath) && File.Exists(downloadedPath))
+                                AppendDownloadLog("[Zachováno po zrušení] " + downloadedPath);
+                            throw;
+                        }
+                        catch (Exception error)
+                        {
+                            exitCode = 1;
+                            AppPaths.WriteError(error);
+                            AppendDownloadLog("! [" + route.Provider + "] " + error.Message);
+                            if (item != null && !string.IsNullOrWhiteSpace(downloadedPath) && File.Exists(downloadedPath))
+                                MarkDirectDownloadRetained(item, downloadedPath);
+                        }
+                    }
+                    downloadCanApplyRate = false;
+                }
+
+                if (ytDlpUrls.Count > 0)
+                {
+                    activeDownloadEngine = "ytdlp";
+                    List<string> regularUrls = ytDlpUrls.FindAll(delegate (string value) { return !IsJojPlayUrl(value); });
+                    List<string> jojPlayUrls = ytDlpUrls.FindAll(IsJojPlayUrl);
+                    if (regularUrls.Count > 0)
+                    {
+                        int ytDlpExit = await RunYtDlpDownloadAsync(options, regularUrls);
+                        if (ytDlpExit == -2)
+                            throw new OperationCanceledException(operationCancellation.Token);
+                        if (ytDlpExit != 0)
+                            exitCode = ytDlpExit;
+                    }
+                    if (jojPlayUrls.Count > 0)
+                    {
+                        DownloadOptions jojOptions = CopyDownloadOptions(options);
+                        jojOptions.CookiesFromBrowser = true;
+                        jojOptions.CookieBrowserSpec = "chrome:" + JojLoginService.ProfileDirectory;
+                        int jojExit = await RunYtDlpDownloadAsync(jojOptions, jojPlayUrls);
+                        if (jojExit == -2)
+                            throw new OperationCanceledException(operationCancellation.Token);
+                        if (jojExit != 0)
+                            exitCode = jojExit;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                exitCode = -2;
+            }
+            catch (Exception error)
+            {
+                exitCode = 1;
+                AppPaths.WriteError(error);
+                AppendDownloadLog("! " + error.Message);
+                if (string.IsNullOrWhiteSpace(failureTitle))
+                    failureTitle = "Stažení se nepovedlo";
+                if (string.IsNullOrWhiteSpace(failureDetail))
+                    failureDetail = error.Message;
+            }
+            finally
+            {
+                try
+                {
+                    await Dispatcher.InvokeAsync(
+                        delegate { },
+                        System.Windows.Threading.DispatcherPriority.Background);
+                }
+                catch
+                {
+                }
+
+                elapsed.Stop();
+                CommitDownloadLiveLog();
+                activeDownloadEngine = "";
+                SetActiveDownloadItem("");
                 downloadCanApplyRate = false;
-            }
+                downloadRateRestartRequested = false;
+                downloadRateApplyPending = false;
+                EndCancellableOperation();
 
-            if (exitCode != -2 && ytDlpUrls.Count > 0)
-            {
-                activeDownloadEngine = "ytdlp";
-                List<string> regularUrls = ytDlpUrls.FindAll(delegate (string value) { return !IsJojPlayUrl(value); });
-                List<string> jojPlayUrls = ytDlpUrls.FindAll(IsJojPlayUrl);
-                if (regularUrls.Count > 0)
+                if (exitCode == 0)
                 {
-                    int ytDlpExit = await RunYtDlpDownloadAsync(options, regularUrls);
-                    if (ytDlpExit == -2)
-                        exitCode = -2;
-                    else if (ytDlpExit != 0)
-                        exitCode = ytDlpExit;
+                    downloadProgress.Value = 100;
+                    downloadProgressPercent.Text = "100 %";
+                    SetBusy(false, "Stahování dokončeno");
+                    string completed = downloadCompletedItems > 0
+                        ? downloadCompletedItems + " souborů je připraveno"
+                        : "Soubory jsou připravené";
+                    SetDownloadStatus("Stažení dokončeno", completed + " · " + FormatElapsed(elapsed.Elapsed) + ".", Theme.Success);
+                    SetTaskbarProgress(0, TaskbarItemProgressState.None);
                 }
-                if (exitCode != -2 && jojPlayUrls.Count > 0)
+                else if (exitCode == -2)
                 {
-                    DownloadOptions jojOptions = CopyDownloadOptions(options);
-                    jojOptions.CookiesFromBrowser = true;
-                    jojOptions.CookieBrowserSpec = "chrome:" + JojLoginService.ProfileDirectory;
-                    int jojExit = await RunYtDlpDownloadAsync(jojOptions, jojPlayUrls);
-                    if (jojExit == -2)
-                        exitCode = -2;
-                    else if (jojExit != 0)
-                        exitCode = jojExit;
+                    SetBusy(false, "Stahování zrušeno");
+                    SetDownloadStatus("Stahování zrušeno", "Přenos byl zastaven a rozpracovaná data zůstala zachovaná.", Theme.Warning);
+                    SetTaskbarProgress(downloadProgress.Value, TaskbarItemProgressState.Paused);
                 }
-            }
-
-            CommitDownloadLiveLog();
-            activeCancellation = null;
-            activeOperation = "";
-            activeDownloadEngine = "";
-            SetActiveDownloadItem("");
-            downloadCanApplyRate = false;
-            downloadRateRestartRequested = false;
-
-            if (exitCode == 0)
-            {
-                downloadProgress.Value = 100;
-                downloadProgressPercent.Text = "100 %";
-                SetDownloadStatus("Stažení dokončeno", "Soubory jsou připravené v cílové složce.", Theme.Success);
-                SetBusy(false, "Stahování dokončeno");
-            }
-            else if (exitCode == -2)
-            {
-                SetDownloadStatus("Stahování zrušeno", "Rozpracovaná operace byla zastavena.", Theme.Warning);
-                SetBusy(false, "Stahování zrušeno");
-            }
-            else
-            {
-                if (downloadCompletedItems > 0)
+                else if (downloadCompletedItems > 0)
                 {
-                    SetDownloadStatus("Dokončeno s upozorněním", downloadCompletedItems + " z " + inputUrls.Count + " souborů je připraveno. Podrobnosti jsou v logu.", Theme.Warning);
                     SetBusy(false, "Část souborů byla stažena");
+                    SetDownloadStatus(
+                        "Dokončeno s upozorněním",
+                        downloadCompletedItems + " souborů je připraveno · " + FormatElapsed(elapsed.Elapsed) + ". Podrobnosti jsou v logu.",
+                        Theme.Warning);
+                    SetTaskbarProgress(downloadProgress.Value, TaskbarItemProgressState.Paused);
+                    ShowDownloadLog();
+                    downloadReportButton.Visibility = Visibility.Visible;
                 }
                 else
                 {
-                    SetDownloadStatus("Stažení se nepovedlo", "Podrobnosti jsou v technickém logu.", Theme.Danger);
                     SetBusy(false, "Chyba při stahování");
+                    SetDownloadStatus(
+                        string.IsNullOrWhiteSpace(failureTitle) ? "Stažení se nepovedlo" : failureTitle,
+                        string.IsNullOrWhiteSpace(failureDetail) ? "Podrobnosti jsou v technickém logu." : failureDetail,
+                        Theme.Danger);
+                    SetTaskbarProgress(Math.Max(1, downloadProgress.Value), TaskbarItemProgressState.Error);
+                    ShowDownloadLog();
+                    downloadReportButton.Visibility = Visibility.Visible;
                 }
-                ShowDownloadLog();
-                downloadReportButton.Visibility = Visibility.Visible;
+
+                if (downloadLimitEnabledCheck.IsChecked == true)
+                {
+                    UpdateDownloadRateState(
+                        string.IsNullOrWhiteSpace(settings.DownloadRateLimit)
+                            ? "Limit je vypnutý."
+                            : "Uloženo: " + DownloadRateLabel(settings.DownloadRateLimit),
+                        Theme.Muted);
+                }
+                SaveLog(AppPaths.DownloadLogPath, downloadLog.ToString());
             }
-            SaveLog(AppPaths.DownloadLogPath, downloadLog.ToString());
         }
 
         private async Task<int> RunYtDlpDownloadAsync(DownloadOptions options, List<string> urls)
@@ -507,6 +579,8 @@ namespace MVMediaStudio
             bool firstRun = true;
             while (true)
             {
+                if (operationCancellation != null && operationCancellation.IsCancellationRequested)
+                    return -2;
                 options.RateLimit = settings.DownloadRateLimit;
                 if (!firstRun)
                     options.NoOverwrite = true;
@@ -522,9 +596,14 @@ namespace MVMediaStudio
                     break;
                 }
 
-                activeCancellation = new CancellationTokenSource();
+                RenewActiveCancellation();
                 appliedDownloadRateLimit = options.RateLimit ?? "";
                 downloadRateRestartRequested = false;
+                UpdateDownloadRateState(
+                    string.IsNullOrWhiteSpace(appliedDownloadRateLimit)
+                        ? "Aktivní: bez omezení"
+                        : "Aktivní: " + DownloadRateLabel(appliedDownloadRateLimit),
+                    Theme.Success);
                 if (firstRun)
                     AppendDownloadLog("$ yt-dlp " + ArgumentUtilities.Join(arguments));
                 try
@@ -537,7 +616,10 @@ namespace MVMediaStudio
                     AppendDownloadLog(error.ToString());
                 }
 
-                if (exitCode == -2 && downloadRateRestartRequested)
+                if (exitCode == -2 &&
+                    downloadRateRestartRequested &&
+                    operationCancellation != null &&
+                    !operationCancellation.IsCancellationRequested)
                 {
                     downloadLiveLogLine = "";
                     RefreshDownloadLogBox();
@@ -556,6 +638,17 @@ namespace MVMediaStudio
             Uri uri;
             return Uri.TryCreate(value, UriKind.Absolute, out uri) &&
                 string.Equals(uri.Host, "play.joj.sk", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool DirectRouteNeedsFfmpeg(DownloadRoute route)
+        {
+            if (route == null)
+                return false;
+            if (route.Kind == DownloadProviderKind.Webshare)
+                return true;
+            Uri uri;
+            return Uri.TryCreate(route.Url, UriKind.Absolute, out uri) &&
+                DirectMediaArgumentBuilder.IsMediaPath(uri.AbsolutePath);
         }
 
         private static DownloadOptions CopyDownloadOptions(DownloadOptions source)
@@ -596,6 +689,9 @@ namespace MVMediaStudio
                 double percentage = progress.Percentage;
                 downloadProgress.Value = percentage;
                 downloadProgressPercent.Text = progress.TotalBytes > 0 ? percentage.ToString("0.#") + " %" : "…";
+                SetTaskbarProgress(percentage, progress.TotalBytes > 0
+                    ? TaskbarItemProgressState.Normal
+                    : TaskbarItemProgressState.Indeterminate);
                 string detail = progress.Provider + " · " + FormatTransferSpeed(progress.BytesPerSecond);
                 if (!string.IsNullOrWhiteSpace(settings.DownloadRateLimit))
                     detail += " · limit " + DownloadRateLabel(settings.DownloadRateLimit);
@@ -621,6 +717,7 @@ namespace MVMediaStudio
                 double percentage = Math.Max(0, Math.Min(100, progress.Percentage));
                 downloadProgress.Value = percentage;
                 downloadProgressPercent.Text = percentage.ToString("0.#") + " %";
+                SetTaskbarProgress(percentage, TaskbarItemProgressState.Normal);
                 SetDownloadStatus(
                     "Převádím stažený soubor",
                     item.Provider + " · " + progress.ProfileLabel + " · " + percentage.ToString("0.#") + " %",
@@ -637,6 +734,7 @@ namespace MVMediaStudio
                 downloadCompletedItems++;
             downloadProgress.Value = 100;
             downloadProgressPercent.Text = "100 %";
+            SetTaskbarProgress(100, TaskbarItemProgressState.Normal);
             if (result.Skipped)
                 AppendDownloadLog("[Přeskočeno] " + result.OutputPath);
             else if (result.Processed)
@@ -707,6 +805,7 @@ namespace MVMediaStudio
                     downloadCanApplyRate = false;
                     downloadProgress.Value = 100;
                     downloadProgressPercent.Text = "100 %";
+                    SetTaskbarProgress(100, TaskbarItemProgressState.Normal);
                     AppendDownloadLog("[Hotovo] " + completedPath);
                     SetDownloadStatus("Soubor dokončen", "Hotovo " + downloadCompletedItems + ". Pokračuji další položkou.", Theme.Success);
                     return;
@@ -734,6 +833,7 @@ namespace MVMediaStudio
                     value = Math.Max(0, Math.Min(100, value));
                     downloadProgress.Value = value;
                     downloadProgressPercent.Text = value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " %";
+                    SetTaskbarProgress(value, TaskbarItemProgressState.Normal);
 
                     Match eta = Regex.Match(line, "ETA\\s+([^\\s]+)", RegexOptions.IgnoreCase);
                     Match speed = Regex.Match(line, "at\\s+([^\\s]+/s)", RegexOptions.IgnoreCase);
@@ -983,6 +1083,7 @@ namespace MVMediaStudio
             settings.CookieBrowser = ComboValue(downloadCookieBrowserCombo, "chrome");
             settings.NoOverwrite = downloadNoOverwriteCheck.IsChecked == true;
             settings.Subtitles = downloadSubtitlesCheck.IsChecked == true;
+            settings.Playlist = downloadPlaylistCheck.IsChecked == true;
         }
 
         private bool OpenJojPlayLogin()
@@ -1088,6 +1189,9 @@ namespace MVMediaStudio
                 settings.Save();
                 appliedDownloadRateLimit = rateLimit;
                 SetDownloadStatus("Limit rychlosti uložen", DownloadRateLabel(rateLimit) + " · použije se při příštím stahování.", Theme.Success);
+                UpdateDownloadRateState(
+                    string.IsNullOrWhiteSpace(rateLimit) ? "Limit je vypnutý." : "Uloženo: " + DownloadRateLabel(rateLimit),
+                    Theme.Success);
                 UpdateDownloadButtons();
                 return;
             }
@@ -1100,16 +1204,18 @@ namespace MVMediaStudio
                 settings.Save();
                 downloadRateApplyPending = true;
                 SetDownloadStatus("Změna rychlosti připravena", DownloadRateLabel(rateLimit) + " · použije se pro nejbližší přenos.", Theme.Warning);
+                UpdateDownloadRateState("Čeká na další přenos: " + DownloadRateLabel(rateLimit), Theme.Warning);
                 UpdateDownloadButtons();
                 return;
             }
-            if (activeDownloadEngine == "direct")
+            if (activeDownloadEngine == "direct" && downloadCanApplyRate)
             {
                 settings.DownloadRateLimit = rateLimit;
                 settings.Save();
                 appliedDownloadRateLimit = rateLimit;
                 downloadRateApplyPending = false;
                 SetDownloadStatus("Limit rychlosti změněn", DownloadRateLabel(rateLimit) + " · aktivní bez přerušení přenosu.", Theme.Success);
+                UpdateDownloadRateState("Aktivní: " + DownloadRateLabel(rateLimit), Theme.Success);
                 UpdateDownloadButtons();
                 return;
             }
@@ -1119,6 +1225,7 @@ namespace MVMediaStudio
                 settings.Save();
                 downloadRateApplyPending = true;
                 SetDownloadStatus("Změna rychlosti připravena", "Použije se při nejbližším přenosu dat.", Theme.Warning);
+                UpdateDownloadRateState("Čeká na další přenos: " + DownloadRateLabel(rateLimit), Theme.Warning);
                 UpdateDownloadButtons();
                 return;
             }
@@ -1126,6 +1233,7 @@ namespace MVMediaStudio
             if (string.Equals(rateLimit, appliedDownloadRateLimit, StringComparison.OrdinalIgnoreCase))
             {
                 SetDownloadStatus("Limit už je aktivní", DownloadRateLabel(rateLimit), Theme.Success);
+                UpdateDownloadRateState("Aktivní: " + DownloadRateLabel(rateLimit), Theme.Success);
                 UpdateDownloadButtons();
                 return;
             }
@@ -1136,8 +1244,17 @@ namespace MVMediaStudio
             downloadCanApplyRate = false;
             AppendDownloadLog("[Rychlost] Nový limit: " + DownloadRateLabel(rateLimit) + ". Navazuji rozpracovaný soubor.");
             SetDownloadStatus("Měním rychlost", "Navazuji rozpracovaný soubor bez ztráty stažených dat…", Theme.Primary);
+            UpdateDownloadRateState("Měním na: " + DownloadRateLabel(rateLimit), Theme.Primary);
             UpdateDownloadButtons();
             activeCancellation.Cancel();
+        }
+
+        private void UpdateDownloadRateState(string text, string colorKey)
+        {
+            if (downloadRateStateText == null)
+                return;
+            downloadRateStateText.Text = text;
+            Theme.Bind(downloadRateStateText, TextBlock.ForegroundProperty, colorKey);
         }
 
         private static string DownloadRateLabel(string rateLimit)
@@ -1171,13 +1288,13 @@ namespace MVMediaStudio
                 return;
             downloadStartButton.IsEnabled = !busy && cachedDownloadUrls.Count > 0;
             downloadCancelButton.IsEnabled = busy && activeOperation == "download" &&
-                activeCancellation != null && !activeCancellation.IsCancellationRequested;
+                operationCancellation != null && !operationCancellation.IsCancellationRequested;
             if (downloadApplyRateButton != null)
             {
                 string selected;
                 bool valid = TryGetDownloadRateLimit(out selected);
                 bool changed = valid && !string.Equals(selected, appliedDownloadRateLimit, StringComparison.OrdinalIgnoreCase);
-                bool cancellationRequested = activeCancellation != null && activeCancellation.IsCancellationRequested;
+                bool cancellationRequested = IsOperationCancellationRequested;
                 downloadApplyRateButton.IsEnabled = DownloadRateControl.CanApply(
                     busy,
                     activeOperation == "download",
@@ -1186,6 +1303,32 @@ namespace MVMediaStudio
                     valid,
                     changed);
             }
+        }
+
+        private void UpdateDownloadControlState()
+        {
+            if (downloadUrlBox == null)
+                return;
+
+            bool editable = !busy;
+            bool rateEditable = !busy || activeOperation == "download";
+            downloadUrlBox.IsEnabled = editable;
+            DownloadViewControl.PasteButton.IsEnabled = editable;
+            DownloadViewControl.ClearButton.IsEnabled = editable;
+            downloadFormatCombo.IsEnabled = editable;
+            downloadQualityCombo.IsEnabled = editable;
+            downloadFolderBox.IsEnabled = editable;
+            DownloadViewControl.BrowseDownloadFolderButton.IsEnabled = editable;
+            downloadSubtitlesCheck.IsEnabled = editable;
+            downloadPlaylistCheck.IsEnabled = editable;
+            downloadNoOverwriteCheck.IsEnabled = editable;
+            downloadCookiesCheck.IsEnabled = editable;
+            downloadCookieBrowserCombo.IsEnabled = editable;
+            downloadExtraArgsBox.IsEnabled = editable;
+            webshareLoginButton.IsEnabled = editable;
+            jojLoginButton.IsEnabled = editable;
+            downloadLimitEnabledCheck.IsEnabled = rateEditable;
+            downloadRateValueBox.IsEnabled = rateEditable;
         }
 
         private void FocusDownloadInput()

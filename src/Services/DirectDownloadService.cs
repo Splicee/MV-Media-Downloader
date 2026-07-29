@@ -47,8 +47,21 @@ namespace MVMediaStudio.Services
                     HttpCompletionOption.ResponseHeadersRead,
                     cancellationToken).ConfigureAwait(false))
                 {
+                    if (existing > 0 &&
+                        response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable &&
+                        response.Content.Headers.ContentRange != null &&
+                        response.Content.Headers.ContentRange.Length == existing)
+                    {
+                        CompletePart(partPath, finalPath);
+                        Report(progress, item, finalPath, existing, existing, 0, true, false, true);
+                        return finalPath;
+                    }
+
                     response.EnsureSuccessStatusCode();
-                    bool resumed = existing > 0 && response.StatusCode == HttpStatusCode.PartialContent;
+                    bool resumed = existing > 0 &&
+                        response.StatusCode == HttpStatusCode.PartialContent &&
+                        response.Content.Headers.ContentRange != null &&
+                        response.Content.Headers.ContentRange.From == existing;
                     if (!resumed)
                         existing = 0;
                     long responseLength = response.Content.Headers.ContentLength ?? -1;
@@ -110,14 +123,15 @@ namespace MVMediaStudio.Services
                         }
                         await output.FlushAsync(cancellationToken).ConfigureAwait(false);
                         output.Flush(true);
+                        if (total > 0 && received < total)
+                            throw new EndOfStreamException(
+                                "Přenos skončil dříve, než byl stažen celý soubor. Rozpracovaná data zůstala zachována.");
                     }
                 }
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            if (File.Exists(finalPath))
-                File.Delete(finalPath);
-            File.Move(partPath, finalPath);
+            CompletePart(partPath, finalPath);
             long size = new FileInfo(finalPath).Length;
             Report(progress, item, finalPath, size, size, 0, true, false, existing > 0);
             return finalPath;
@@ -168,7 +182,7 @@ namespace MVMediaStudio.Services
         private static string UniquePath(string directory, string fileName, bool noOverwrite)
         {
             string path = Path.Combine(directory, fileName);
-            if (noOverwrite || (!File.Exists(path) && !File.Exists(path + ".part")))
+            if (noOverwrite || !File.Exists(path))
                 return path;
             string stem = Path.GetFileNameWithoutExtension(fileName);
             string extension = Path.GetExtension(fileName);
@@ -179,6 +193,13 @@ namespace MVMediaStudio.Services
                     return candidate;
             }
             return Path.Combine(directory, stem + "-" + DateTime.Now.ToString("yyyyMMddHHmmss") + extension);
+        }
+
+        private static void CompletePart(string partPath, string finalPath)
+        {
+            if (File.Exists(finalPath))
+                File.Delete(finalPath);
+            File.Move(partPath, finalPath);
         }
 
         private static void Report(
@@ -223,6 +244,17 @@ namespace MVMediaStudio.Services
             Action<DirectPostProcessProgress> progress,
             CancellationToken cancellationToken)
         {
+            if (!File.Exists(sourcePath))
+                throw new FileNotFoundException("Stažený soubor neexistuje.", sourcePath);
+            if (!DirectMediaArgumentBuilder.IsMediaPath(sourcePath))
+            {
+                return new DirectPostProcessResult
+                {
+                    OutputPath = sourcePath,
+                    ProfileLabel = "Původní soubor",
+                    Skipped = preserveInput
+                };
+            }
             if (string.IsNullOrWhiteSpace(ffmpegPath) || !File.Exists(ffmpegPath))
                 throw new FileNotFoundException("FFmpeg není připravený pro převod staženého souboru.", ffmpegPath);
 

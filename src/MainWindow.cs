@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -9,6 +10,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shell;
 using MVMediaStudio.Core;
 using MVMediaStudio.Services;
 using MVMediaStudio.UI;
@@ -24,8 +26,12 @@ namespace MVMediaStudio
         private readonly StringBuilder conversionLog;
 
         private ToolState tools;
+        private CancellationTokenSource operationCancellation;
         private CancellationTokenSource activeCancellation;
         private bool busy;
+        private bool allowWindowClose;
+        private bool closingInProgress;
+        private bool powerRequestActive;
         private string currentPage = "download";
         private string activeOperation = "";
 
@@ -59,6 +65,10 @@ namespace MVMediaStudio
             conversionLog = new StringBuilder();
 
             InitializeComponent();
+            Width = settings.WindowWidth;
+            Height = settings.WindowHeight;
+            if (settings.WindowMaximized)
+                WindowState = WindowState.Maximized;
             Theme.Apply(this, IsDark);
             InitializeShell();
             InitializeDownloadView();
@@ -93,7 +103,7 @@ namespace MVMediaStudio
                 else if (settings.AutoUpdate)
                     await CheckForUpdatesAsync(false);
             };
-            Closing += delegate { SaveSettings(); CancelActiveWork(); };
+            Closing += WindowClosing;
             PreviewKeyDown += HandleShortcuts;
         }
 
@@ -289,7 +299,55 @@ namespace MVMediaStudio
         {
             CaptureDownloadSettings();
             CaptureConversionSettings();
+            Rect bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, ActualWidth, ActualHeight) : RestoreBounds;
+            if (bounds.Width >= MinWidth && bounds.Width <= 7680)
+                settings.WindowWidth = bounds.Width;
+            if (bounds.Height >= MinHeight && bounds.Height <= 4320)
+                settings.WindowHeight = bounds.Height;
+            settings.WindowMaximized = WindowState == WindowState.Maximized;
             settings.Save();
+        }
+
+        private async void WindowClosing(object sender, CancelEventArgs eventArgs)
+        {
+            SaveSettings();
+            if (allowWindowClose || !busy || activeOperation == "update")
+                return;
+
+            eventArgs.Cancel = true;
+            if (closingInProgress)
+                return;
+
+            MessageBoxResult answer = MessageBox.Show(
+                this,
+                "Právě probíhá " + ActiveOperationLabel() + ". Chceš ji ukončit a zavřít aplikaci?\n\nRozpracovaná stažená data zůstanou zachovaná pro pozdější navázání.",
+                "Ukončit probíhající úlohu",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question,
+                MessageBoxResult.No);
+            if (answer != MessageBoxResult.Yes)
+                return;
+
+            closingInProgress = true;
+            CancelActiveWork();
+            Stopwatch wait = Stopwatch.StartNew();
+            while (busy && wait.Elapsed < TimeSpan.FromSeconds(6))
+                await Task.Delay(100);
+
+            allowWindowClose = true;
+            closingInProgress = false;
+            Close();
+        }
+
+        private string ActiveOperationLabel()
+        {
+            if (activeOperation == "download")
+                return "stahování";
+            if (activeOperation == "conversion")
+                return "konverze";
+            if (activeOperation == "tools")
+                return "příprava nástroje";
+            return "úloha";
         }
 
         private async void HandleShortcuts(object sender, KeyEventArgs eventArgs)
@@ -328,7 +386,9 @@ namespace MVMediaStudio
         {
             downloadRateRestartRequested = false;
             downloadRateApplyPending = false;
-            if (activeCancellation != null && !activeCancellation.IsCancellationRequested)
+            bool canCancel = (operationCancellation != null && !operationCancellation.IsCancellationRequested) ||
+                (activeCancellation != null && !activeCancellation.IsCancellationRequested);
+            if (canCancel)
             {
                 if (activeOperation == "download")
                 {
@@ -341,7 +401,10 @@ namespace MVMediaStudio
                     SetConversionStatus("Ruším konverzi", "Ukončuji aktivní převod…", Theme.Warning);
                     footerStatus.Text = "Ruším konverzi";
                 }
-                activeCancellation.Cancel();
+                if (operationCancellation != null && !operationCancellation.IsCancellationRequested)
+                    operationCancellation.Cancel();
+                if (activeCancellation != null && !activeCancellation.IsCancellationRequested)
+                    activeCancellation.Cancel();
                 UpdateDownloadButtons();
                 UpdateConversionButtons();
             }
@@ -351,10 +414,71 @@ namespace MVMediaStudio
         {
             busy = value;
             footerStatus.Text = message;
+            if (value && !powerRequestActive &&
+                (activeOperation == "download" || activeOperation == "conversion"))
+            {
+                powerRequestActive = SystemPowerService.PreventSleep();
+            }
+            else if (!value && powerRequestActive)
+            {
+                SystemPowerService.AllowSleep();
+                powerRequestActive = false;
+            }
             if (repairButton != null)
                 repairButton.IsEnabled = !value;
+            UpdateDownloadControlState();
+            UpdateConversionControlState();
             UpdateDownloadButtons();
             UpdateConversionButtons();
+        }
+
+        private void BeginCancellableOperation(string operation)
+        {
+            EndCancellableOperation();
+            operationCancellation = new CancellationTokenSource();
+            activeCancellation = CancellationTokenSource.CreateLinkedTokenSource(operationCancellation.Token);
+            activeOperation = operation;
+        }
+
+        private void RenewActiveCancellation()
+        {
+            if (activeCancellation != null)
+                activeCancellation.Dispose();
+            activeCancellation = operationCancellation == null
+                ? new CancellationTokenSource()
+                : CancellationTokenSource.CreateLinkedTokenSource(operationCancellation.Token);
+        }
+
+        private void EndCancellableOperation()
+        {
+            if (activeCancellation != null)
+            {
+                activeCancellation.Dispose();
+                activeCancellation = null;
+            }
+            if (operationCancellation != null)
+            {
+                operationCancellation.Dispose();
+                operationCancellation = null;
+            }
+            activeOperation = "";
+        }
+
+        private bool IsOperationCancellationRequested
+        {
+            get
+            {
+                return (operationCancellation != null && operationCancellation.IsCancellationRequested) ||
+                    (activeCancellation != null && activeCancellation.IsCancellationRequested);
+            }
+        }
+
+        private void SetTaskbarProgress(double percentage, TaskbarItemProgressState state)
+        {
+            if (TaskbarItemInfo == null)
+                return;
+            TaskbarItemInfo.ProgressState = state;
+            TaskbarItemInfo.ProgressValue = Math.Max(0, Math.Min(1, percentage / 100d));
         }
 
         private void OpenDirectory(string path)
@@ -369,6 +493,28 @@ namespace MVMediaStudio
             catch (Exception error)
             {
                 AppPaths.WriteError(error);
+            }
+        }
+
+        private void RevealFile(string path)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                    return;
+                ProcessStartInfo start = new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    UseShellExecute = true
+                };
+                start.ArgumentList.Add("/select,");
+                start.ArgumentList.Add(Path.GetFullPath(path));
+                Process.Start(start);
+            }
+            catch (Exception error)
+            {
+                AppPaths.WriteError(error);
+                OpenDirectory(Path.GetDirectoryName(path));
             }
         }
 
@@ -436,6 +582,15 @@ namespace MVMediaStudio
         {
             Version version = typeof(MainWindow).Assembly.GetName().Version;
             return version.Major + "." + version.Minor + "." + version.Build;
+        }
+
+        private static string FormatElapsed(TimeSpan elapsed)
+        {
+            if (elapsed.TotalHours >= 1)
+                return elapsed.ToString(@"h\:mm\:ss");
+            if (elapsed.TotalMinutes >= 1)
+                return elapsed.ToString(@"m\:ss");
+            return Math.Max(1, (int)Math.Round(elapsed.TotalSeconds)) + " s";
         }
     }
 }

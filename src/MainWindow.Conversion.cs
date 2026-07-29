@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -10,6 +11,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shell;
 using Microsoft.Win32;
 using MVMediaStudio.Core;
 using MVMediaStudio.Services;
@@ -37,6 +39,7 @@ namespace MVMediaStudio
         private Button conversionClearButton;
         private Button conversionReportButton;
         private Button conversionLogToggle;
+        private Button conversionCopyLogButton;
         private Border conversionLogCard;
         private TextBox conversionLogBox;
         private ProgressBar conversionOverallProgress;
@@ -45,6 +48,7 @@ namespace MVMediaStudio
         private StackPanel conversionContent;
         private FrameworkElement conversionCodecField;
         private FrameworkElement conversionCodecNoticePanel;
+        private int conversionAnalysisCount;
 
         private void InitializeConversionView()
         {
@@ -66,6 +70,7 @@ namespace MVMediaStudio
             conversionClearButton = ConversionViewControl.ConversionClearButton;
             conversionReportButton = ConversionViewControl.ConversionReportButton;
             conversionLogToggle = ConversionViewControl.ConversionLogToggle;
+            conversionCopyLogButton = ConversionViewControl.ConversionCopyLogButton;
             conversionLogCard = ConversionViewControl.ConversionLogCard;
             conversionLogBox = ConversionViewControl.ConversionLogBox;
             conversionOverallProgress = ConversionViewControl.ConversionOverallProgress;
@@ -96,14 +101,14 @@ namespace MVMediaStudio
                 conversionRateCombo,
                 new ComboItem("crf", "CRF · stálá kvalita"),
                 new ComboItem("bitrate", "Pevný bitrate"));
-            SelectCombo(conversionRateCombo, "crf");
+            SelectCombo(conversionRateCombo, settings.ConversionRateControl);
             PopulateCombo(
                 conversionCrfCombo,
                 new ComboItem("18", "18 · vysoká"),
                 new ComboItem("20", "20 · velmi dobrá"),
                 new ComboItem("23", "23 · doporučená"),
                 new ComboItem("28", "28 · menší soubor"));
-            SelectCombo(conversionCrfCombo, "23");
+            SelectCombo(conversionCrfCombo, settings.ConversionCrf);
             PopulateCombo(
                 conversionVideoBitrateCombo,
                 new ComboItem("2500k", "2,5 Mb/s"),
@@ -112,7 +117,7 @@ namespace MVMediaStudio
                 new ComboItem("8000k", "8 Mb/s"),
                 new ComboItem("12000k", "12 Mb/s"),
                 new ComboItem("20000k", "20 Mb/s"));
-            SelectCombo(conversionVideoBitrateCombo, "6000k");
+            SelectCombo(conversionVideoBitrateCombo, settings.ConversionVideoBitrate);
             PopulateCombo(
                 conversionAudioCodecCombo,
                 new ComboItem("aac", "AAC · kompatibilní"),
@@ -126,7 +131,7 @@ namespace MVMediaStudio
                 new ComboItem("192k", "192 kb/s"),
                 new ComboItem("256k", "256 kb/s"),
                 new ComboItem("320k", "320 kb/s"));
-            SelectCombo(conversionAudioBitrateCombo, "192k");
+            SelectCombo(conversionAudioBitrateCombo, settings.ConversionAudioBitrate);
             conversionFolderBox.Text = settings.ConversionDirectory;
 
             ConversionViewControl.ConversionListHost.PreviewDragOver += ConversionDragOver;
@@ -137,11 +142,24 @@ namespace MVMediaStudio
                 await ConversionDropAsync(eventArgs);
             };
             conversionGrid.SelectionChanged += delegate { UpdateConversionButtons(); };
+            conversionGrid.PreviewKeyDown += delegate (object sender, KeyEventArgs eventArgs)
+            {
+                if (eventArgs.Key != Key.Delete || busy)
+                    return;
+                RemoveSelectedConversionJobs();
+                eventArgs.Handled = true;
+            };
+            conversionGrid.MouseDoubleClick += delegate
+            {
+                ConversionJob item = conversionGrid.SelectedItem as ConversionJob;
+                if (item != null)
+                    RevealFile(item.SourcePath);
+            };
             ConversionViewControl.AddConversionFilesButton.Click += async delegate
             {
                 await BrowseConversionFilesAsync();
             };
-            conversionRemoveButton.Click += delegate { RemoveSelectedConversionJob(); };
+            conversionRemoveButton.Click += delegate { RemoveSelectedConversionJobs(); };
             conversionClearButton.Click += delegate
             {
                 conversionJobs.Clear();
@@ -183,6 +201,7 @@ namespace MVMediaStudio
                 SaveProblemReport("Konverze", conversionLog.ToString());
             };
             conversionLogToggle.Click += delegate { ToggleConversionLog(); };
+            conversionCopyLogButton.Click += delegate { CopyConversionLog(); };
 
             UpdateRateControlVisibility();
             UpdateConversionQueue();
@@ -206,10 +225,14 @@ namespace MVMediaStudio
         {
             List<ConversionJob> added = new List<ConversionJob>();
             int unsupportedCount = 0;
+            int capacitySkipped = 0;
             foreach (string path in paths ?? Enumerable.Empty<string>())
             {
                 if (conversionJobs.Count >= 20)
-                    break;
+                {
+                    capacitySkipped++;
+                    continue;
+                }
                 if (!File.Exists(path))
                     continue;
                 if (!MediaFileSupport.IsSupportedVideo(path))
@@ -225,12 +248,15 @@ namespace MVMediaStudio
             }
             UpdateConversionQueue();
 
-            if (!busy && unsupportedCount > 0)
+            if (!busy && (unsupportedCount > 0 || capacitySkipped > 0))
             {
                 conversionStatusTitle.Text = added.Count > 0 ? "Videa byla přidána" : "Soubor nelze přidat";
-                conversionStatusDetail.Text = unsupportedCount == 1
-                    ? "Konverze nyní přijímá běžné video soubory, nikoli samostatný zvuk."
-                    : unsupportedCount + " souborů bylo přeskočeno, protože nejde o podporovaná videa.";
+                List<string> details = new List<string>();
+                if (unsupportedCount > 0)
+                    details.Add(unsupportedCount + " nepodporovaných souborů bylo přeskočeno");
+                if (capacitySkipped > 0)
+                    details.Add(capacitySkipped + " souborů se nevešlo do limitu 20");
+                conversionStatusDetail.Text = string.Join(" · ", details.ToArray()) + ".";
             }
 
             if (added.Count == 0)
@@ -238,25 +264,55 @@ namespace MVMediaStudio
             if (!tools.HasFfprobe)
                 await RefreshToolsAsync(false);
 
-            foreach (ConversionJob item in added)
+            conversionAnalysisCount += added.Count;
+            SetConversionStatus(
+                "Analyzuji videa",
+                added.Count == 1 ? added[0].FileName : "Zjišťuji kodek a délku " + added.Count + " souborů…",
+                Theme.Primary);
+            UpdateConversionButtons();
+            SemaphoreSlim probeLimit = new SemaphoreSlim(4, 4);
+            try
             {
-                if (!tools.HasFfprobe)
-                {
-                    item.CodecDetails = "FFprobe není dostupný";
-                    continue;
-                }
-                item.CodecDetails = "Analyzuji…";
-                try
-                {
-                    MediaInfo media = await Task.Run(delegate { return MediaProbeService.Probe(tools.FfprobePath, item.SourcePath); });
-                    item.Media = media;
-                    item.CodecDetails = media.TechnicalSummary;
-                }
-                catch (Exception error)
-                {
-                    item.CodecDetails = "Analýza se nepovedla";
-                    AppPaths.WriteError(error);
-                }
+                await Task.WhenAll(added.Select(
+                    delegate (ConversionJob item) { return AnalyzeConversionItemAsync(item, probeLimit); }));
+            }
+            finally
+            {
+                probeLimit.Dispose();
+                conversionAnalysisCount = Math.Max(0, conversionAnalysisCount - added.Count);
+                if (!busy)
+                    SetConversionStatus("Připraveno ke konverzi", conversionJobs.Count + " souborů čeká ve frontě.", Theme.Success);
+                UpdateConversionButtons();
+            }
+        }
+
+        private async Task AnalyzeConversionItemAsync(
+            ConversionJob item,
+            SemaphoreSlim probeLimit)
+        {
+            if (!tools.HasFfprobe)
+            {
+                item.CodecDetails = "FFprobe není dostupný";
+                return;
+            }
+
+            item.CodecDetails = "Analyzuji…";
+            await probeLimit.WaitAsync();
+            try
+            {
+                MediaInfo media = await Task.Run(
+                    delegate { return MediaProbeService.Probe(tools.FfprobePath, item.SourcePath); });
+                item.Media = media;
+                item.CodecDetails = media.TechnicalSummary;
+            }
+            catch (Exception error)
+            {
+                item.CodecDetails = "Analýza se nepovedla";
+                AppPaths.WriteError(error);
+            }
+            finally
+            {
+                probeLimit.Release();
             }
         }
 
@@ -275,10 +331,12 @@ namespace MVMediaStudio
                 await AddConversionFilesAsync(paths);
         }
 
-        private void RemoveSelectedConversionJob()
+        private void RemoveSelectedConversionJobs()
         {
-            ConversionJob item = conversionGrid.SelectedItem as ConversionJob;
-            if (item != null)
+            List<ConversionJob> selected = conversionGrid.SelectedItems
+                .OfType<ConversionJob>()
+                .ToList();
+            foreach (ConversionJob item in selected)
                 conversionJobs.Remove(item);
             UpdateConversionQueue();
         }
@@ -289,6 +347,8 @@ namespace MVMediaStudio
                 return;
             conversionCount.Text = conversionJobs.Count + " / 20";
             conversionEmptyPanel.Visibility = conversionJobs.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            ConversionViewControl.ConversionListHost.MinHeight = conversionJobs.Count == 0 ? 200 : 260;
+            conversionGrid.MinHeight = conversionJobs.Count == 0 ? 200 : 260;
             if (!busy)
             {
                 conversionStatusTitle.Text = conversionJobs.Count == 0 ? "Fronta je prázdná" : "Připraveno ke konverzi";
@@ -305,102 +365,152 @@ namespace MVMediaStudio
                 return;
 
             CaptureConversionSettings();
-            Directory.CreateDirectory(settings.ConversionDirectory);
-            activeCancellation = new CancellationTokenSource();
-            activeOperation = "conversion";
+            settings.Save();
+            BeginCancellableOperation("conversion");
             conversionLog.Clear();
             conversionLogBox.Clear();
             conversionReportButton.Visibility = Visibility.Collapsed;
             conversionOverallProgress.Value = 0;
             SetBusy(true, "Probíhá konverze");
+            SetTaskbarProgress(0, TaskbarItemProgressState.Indeterminate);
             SetConversionStatus("Konverze spuštěna", "Zpracovávám frontu souborů…", Theme.Primary);
-            int errors = 0;
-
-            for (int index = 0; index < conversionJobs.Count; index++)
+            foreach (ConversionJob job in conversionJobs)
             {
-                ConversionJob item = conversionJobs[index];
-                if (activeCancellation.IsCancellationRequested)
-                {
-                    item.Status = "Zrušeno";
-                    continue;
-                }
+                job.Status = "Čeká";
+                job.Progress = 0;
+            }
 
-                item.Status = "Konvertuji";
-                item.Progress = 0;
-                ConversionOptions options = CurrentConversionOptions(item.SourcePath);
-                string outputPath;
-                List<string> arguments;
+            int errors = 0;
+            int completed = 0;
+            bool cancelled = false;
+            Stopwatch elapsed = Stopwatch.StartNew();
+            try
+            {
+                StorageService.EnsureWritableDirectory(settings.ConversionDirectory);
+                for (int index = 0; index < conversionJobs.Count; index++)
+                {
+                    operationCancellation.Token.ThrowIfCancellationRequested();
+                    ConversionJob item = conversionJobs[index];
+                    item.Status = "Konvertuji";
+                    item.Progress = 0;
+                    ConversionOptions options = CurrentConversionOptions(item.SourcePath);
+                    string outputPath = "";
+                    List<string> arguments;
+                    try
+                    {
+                        arguments = ConversionArgumentBuilder.Build(options, out outputPath);
+                    }
+                    catch (Exception error)
+                    {
+                        item.Status = "Chyba";
+                        errors++;
+                        AppendConversionLog("[Chyba] " + item.FileName + " · " + error.Message);
+                        continue;
+                    }
+
+                    AppendConversionLog("$ ffmpeg " + ArgumentUtilities.Join(arguments));
+                    int itemIndex = index;
+                    int exitCode;
+                    try
+                    {
+                        exitCode = await ProcessService.RunAsync(
+                            tools.FfmpegPath,
+                            arguments,
+                            delegate(string line, bool isError) { HandleConversionLine(item, itemIndex, line, isError); },
+                            activeCancellation.Token);
+                    }
+                    catch (Exception error)
+                    {
+                        AppPaths.WriteError(error);
+                        AppendConversionLog(error.ToString());
+                        exitCode = -1;
+                    }
+
+                    if (exitCode == -2)
+                    {
+                        StorageService.DeleteIncompleteFile(outputPath);
+                        item.Status = "Zrušeno";
+                        throw new OperationCanceledException(operationCancellation.Token);
+                    }
+                    if (exitCode != 0 || !File.Exists(outputPath) || new FileInfo(outputPath).Length == 0)
+                    {
+                        StorageService.DeleteIncompleteFile(outputPath);
+                        item.Status = "Chyba";
+                        errors++;
+                        AppendConversionLog("[Chyba] " + item.FileName + " · FFmpeg nevytvořil platný výsledek.");
+                    }
+                    else
+                    {
+                        item.Progress = 100;
+                        item.Status = "Hotovo";
+                        completed++;
+                        AppendConversionLog("[Hotovo] " + outputPath);
+                    }
+                    conversionOverallProgress.Value = ((index + 1d) / conversionJobs.Count) * 100d;
+                    SetTaskbarProgress(conversionOverallProgress.Value, TaskbarItemProgressState.Normal);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                cancelled = true;
+                foreach (ConversionJob item in conversionJobs)
+                {
+                    if (item.Status != "Hotovo" && item.Status != "Chyba")
+                        item.Status = "Zrušeno";
+                }
+            }
+            catch (Exception error)
+            {
+                errors++;
+                AppPaths.WriteError(error);
+                AppendConversionLog("! " + error.Message);
+            }
+            finally
+            {
                 try
                 {
-                    arguments = ConversionArgumentBuilder.Build(options, out outputPath);
+                    await Dispatcher.InvokeAsync(
+                        delegate { },
+                        System.Windows.Threading.DispatcherPriority.Background);
                 }
-                catch (Exception error)
+                catch
                 {
-                    item.Status = "Chyba";
-                    errors++;
-                    AppendConversionLog(error.Message);
-                    continue;
                 }
 
-                AppendConversionLog("$ ffmpeg " + ArgumentUtilities.Join(arguments));
-                int itemIndex = index;
-                int exitCode = -1;
-                try
+                elapsed.Stop();
+                EndCancellableOperation();
+                if (cancelled)
                 {
-                    exitCode = await ProcessService.RunAsync(
-                        tools.FfmpegPath,
-                        arguments,
-                        delegate(string line, bool isError) { HandleConversionLine(item, itemIndex, line, isError); },
-                        activeCancellation.Token);
+                    SetBusy(false, "Konverze zrušena");
+                    SetConversionStatus(
+                        "Konverze zrušena",
+                        completed + " souborů bylo dokončeno, rozpracovaný výstup byl odstraněn.",
+                        Theme.Warning);
+                    SetTaskbarProgress(conversionOverallProgress.Value, TaskbarItemProgressState.Paused);
                 }
-                catch (Exception error)
+                else if (errors > 0)
                 {
-                    AppPaths.WriteError(error);
-                    AppendConversionLog(error.ToString());
-                }
-
-                if (exitCode == 0)
-                {
-                    item.Progress = 100;
-                    item.Status = "Hotovo";
-                    AppendConversionLog("[Hotovo] " + item.FileName);
-                }
-                else if (exitCode == -2)
-                {
-                    item.Status = "Zrušeno";
-                    break;
+                    SetBusy(false, "Konverze dokončena s chybami");
+                    SetConversionStatus(
+                        "Dokončeno s chybami",
+                        completed + " hotovo, " + errors + " chyb · " + FormatElapsed(elapsed.Elapsed) + ". Podrobnosti jsou v logu.",
+                        Theme.Danger);
+                    SetTaskbarProgress(Math.Max(1, conversionOverallProgress.Value), TaskbarItemProgressState.Error);
+                    ShowConversionLog();
+                    conversionReportButton.Visibility = Visibility.Visible;
                 }
                 else
                 {
-                    item.Status = "Chyba";
-                    errors++;
-                    AppendConversionLog("[Chyba] " + item.FileName);
+                    conversionOverallProgress.Value = 100;
+                    SetBusy(false, "Konverze dokončena");
+                    SetConversionStatus(
+                        "Konverze dokončena",
+                        completed + " souborů je připraveno · " + FormatElapsed(elapsed.Elapsed) + ".",
+                        Theme.Success);
+                    SetTaskbarProgress(0, TaskbarItemProgressState.None);
                 }
-                conversionOverallProgress.Value = ((index + 1d) / conversionJobs.Count) * 100d;
+                SaveLog(AppPaths.ConversionLogPath, conversionLog.ToString());
             }
-
-            bool cancelled = activeCancellation.IsCancellationRequested;
-            activeCancellation = null;
-            activeOperation = "";
-            if (cancelled)
-            {
-                SetConversionStatus("Konverze zrušena", "Rozpracovaná operace byla zastavena.", Theme.Warning);
-                SetBusy(false, "Konverze zrušena");
-            }
-            else if (errors > 0)
-            {
-                SetConversionStatus("Dokončeno s chybami", errors + " souborů se nepodařilo převést. Podrobnosti jsou v logu.", Theme.Danger);
-                SetBusy(false, "Konverze dokončena s chybami");
-                ShowConversionLog();
-                conversionReportButton.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                conversionOverallProgress.Value = 100;
-                SetConversionStatus("Konverze dokončena", "Všechny soubory jsou připravené ve výstupní složce.", Theme.Success);
-                SetBusy(false, "Konverze dokončena");
-            }
-            SaveLog(AppPaths.ConversionLogPath, conversionLog.ToString());
         }
 
         private void HandleConversionLine(ConversionJob item, int itemIndex, string line, bool isError)
@@ -417,6 +527,7 @@ namespace MVMediaStudio
                     {
                         item.Progress = Math.Max(0, Math.Min(99, (microseconds / 1000000d) / item.Media.DurationSeconds * 100d));
                         conversionOverallProgress.Value = ((itemIndex + item.Progress / 100d) / conversionJobs.Count) * 100d;
+                        SetTaskbarProgress(conversionOverallProgress.Value, TaskbarItemProgressState.Normal);
                         SetConversionStatus("Konvertuji " + (itemIndex + 1) + " z " + conversionJobs.Count, item.FileName + " · " + item.Progress.ToString("0") + " %", Theme.Primary);
                     }
                 }
@@ -485,6 +596,7 @@ namespace MVMediaStudio
             SelectCombo(conversionAudioCodecCombo, "aac");
             SelectCombo(conversionRateCombo, "crf");
             SelectCombo(conversionCrfCombo, "23");
+            SelectCombo(conversionVideoBitrateCombo, "6000k");
             SelectCombo(conversionAudioBitrateCombo, "192k");
             SetConversionStatus("Doporučené nastavení", "MP4, H.264 a CRF 23 fungují na většině zařízení.", Theme.Success);
         }
@@ -494,10 +606,11 @@ namespace MVMediaStudio
             if (conversionRateCombo == null)
                 return;
             bool bitrate = ComboValue(conversionRateCombo, "crf") == "bitrate";
-            conversionCrfCombo.IsEnabled = !bitrate;
-            conversionVideoBitrateCombo.IsEnabled = bitrate;
+            conversionCrfCombo.IsEnabled = !busy && !bitrate;
+            conversionVideoBitrateCombo.IsEnabled = !busy && bitrate;
             if (conversionAudioBitrateCombo != null)
-                conversionAudioBitrateCombo.IsEnabled = conversionAudioCodecCombo == null || ComboValue(conversionAudioCodecCombo, "aac") != "flac";
+                conversionAudioBitrateCombo.IsEnabled = !busy &&
+                    (conversionAudioCodecCombo == null || ComboValue(conversionAudioCodecCombo, "aac") != "flac");
         }
 
         private void BrowseConversionFolder()
@@ -517,7 +630,11 @@ namespace MVMediaStudio
                 return;
             settings.ConversionFormat = ComboValue(conversionFormatCombo, "mp4");
             settings.ConversionCodec = ComboValue(conversionCodecCombo, "h264");
+            settings.ConversionRateControl = ComboValue(conversionRateCombo, "crf");
+            settings.ConversionCrf = ComboValue(conversionCrfCombo, "23");
+            settings.ConversionVideoBitrate = ComboValue(conversionVideoBitrateCombo, "6000k");
             settings.ConversionAudioCodec = ComboValue(conversionAudioCodecCombo, "aac");
+            settings.ConversionAudioBitrate = ComboValue(conversionAudioBitrateCombo, "192k");
             settings.ConversionDirectory = string.IsNullOrWhiteSpace(conversionFolderBox.Text) ? AppPaths.DefaultDownloadDirectory : conversionFolderBox.Text;
         }
 
@@ -567,15 +684,58 @@ namespace MVMediaStudio
             conversionLogToggle.Content = IconText("\uE70D", "Skrýt log");
         }
 
+        private void CopyConversionLog()
+        {
+            string text = conversionLog.ToString();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                footerStatus.Text = "Log konverze je zatím prázdný";
+                return;
+            }
+            try
+            {
+                Clipboard.SetText(text);
+                footerStatus.Text = "Log konverze byl zkopírován";
+            }
+            catch
+            {
+                footerStatus.Text = "Log se nepodařilo zkopírovat";
+            }
+        }
+
         private void UpdateConversionButtons()
         {
             if (conversionStartButton == null)
                 return;
-            conversionStartButton.IsEnabled = !busy && conversionJobs.Count > 0;
+            conversionStartButton.IsEnabled = !busy && conversionAnalysisCount == 0 && conversionJobs.Count > 0;
             conversionCancelButton.IsEnabled = busy && activeOperation == "conversion" &&
-                activeCancellation != null && !activeCancellation.IsCancellationRequested;
-            conversionRemoveButton.IsEnabled = !busy && conversionGrid.SelectedItem != null;
+                operationCancellation != null && !operationCancellation.IsCancellationRequested;
+            conversionRemoveButton.IsEnabled = !busy && conversionGrid.SelectedItems.Count > 0;
             conversionClearButton.IsEnabled = !busy && conversionJobs.Count > 0;
+            ConversionViewControl.AddConversionFilesButton.IsEnabled = !busy && conversionAnalysisCount == 0;
+        }
+
+        private void UpdateConversionControlState()
+        {
+            if (conversionGrid == null)
+                return;
+
+            bool editable = !busy;
+            conversionGrid.IsEnabled = editable;
+            ConversionViewControl.AddConversionFilesButton.IsEnabled = editable && conversionAnalysisCount == 0;
+            ConversionViewControl.RecommendedSettingsButton.IsEnabled = editable;
+            conversionFormatCombo.IsEnabled = editable;
+            conversionCodecCombo.IsEnabled = editable;
+            conversionRateCombo.IsEnabled = editable;
+            conversionCrfCombo.IsEnabled = editable &&
+                ComboValue(conversionRateCombo, "crf") != "bitrate";
+            conversionVideoBitrateCombo.IsEnabled = editable &&
+                ComboValue(conversionRateCombo, "crf") == "bitrate";
+            conversionAudioCodecCombo.IsEnabled = editable;
+            conversionAudioBitrateCombo.IsEnabled = editable &&
+                ComboValue(conversionAudioCodecCombo, "aac") != "flac";
+            conversionFolderBox.IsEnabled = editable;
+            ConversionViewControl.BrowseConversionFolderButton.IsEnabled = editable;
         }
 
         private void UpdateConversionResponsiveLayout(double windowWidth, double windowHeight)

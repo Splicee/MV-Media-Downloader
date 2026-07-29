@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using MVMediaStudio.Core;
 
@@ -23,12 +24,20 @@ namespace MVMediaStudio.Services
 
         public static async Task<DownloadUrlResolution> ResolveAsync(IList<string> urls)
         {
+            return await ResolveAsync(urls, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        public static async Task<DownloadUrlResolution> ResolveAsync(
+            IList<string> urls,
+            CancellationToken cancellationToken)
+        {
             if (urls == null)
                 throw new ArgumentNullException("urls");
 
             DownloadUrlResolution result = new DownloadUrlResolution();
             foreach (string url in urls)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 Uri uri;
                 if (!Uri.TryCreate(url, UriKind.Absolute, out uri))
                 {
@@ -59,8 +68,9 @@ namespace MVMediaStudio.Services
                 string html;
                 try
                 {
-                    html = await DownloadPageAsync(url);
+                    html = await DownloadPageAsync(url, cancellationToken).ConfigureAwait(false);
                 }
+                catch (OperationCanceledException) { throw; }
                 catch (Exception error)
                 {
                     throw new InvalidOperationException("Stránku JOJ se nepodařilo načíst. Zkontroluj připojení a zkus otevřít konkrétní epizodu v prohlížeči.", error);
@@ -88,17 +98,22 @@ namespace MVMediaStudio.Services
             return match.Value.StartsWith("//", StringComparison.Ordinal) ? "https:" + match.Value : match.Value;
         }
 
-        private static async Task<string> DownloadPageAsync(string url)
+        private static async Task<string> DownloadPageAsync(
+            string url,
+            CancellationToken cancellationToken)
         {
             using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url))
             {
                 request.Headers.UserAgent.ParseAdd(AppInfo.BrowserUserAgent);
                 request.Headers.Accept.ParseAdd("text/html");
                 request.Headers.Accept.ParseAdd("application/xhtml+xml");
-                using (HttpResponseMessage response = await Client.SendAsync(request).ConfigureAwait(false))
+                using (HttpResponseMessage response = await Client.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseContentRead,
+                    cancellationToken).ConfigureAwait(false))
                 {
                     response.EnsureSuccessStatusCode();
-                    return await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 }
             }
         }

@@ -221,6 +221,14 @@
                                                     Text="&#xE73E;" />
                                             </Button>
                                         </Grid>
+                                        <TextBlock
+                                            x:Name="DownloadRateStateText"
+                                            Margin="0,6,0,0"
+                                            FontSize="10.5"
+                                            Foreground="{DynamicResource Muted}"
+                                            Text="Potvrď rychlost tlačítkem nebo klávesou Enter."
+                                            TextWrapping="Wrap"
+                                            Visibility="Hidden" />
                                     </StackPanel>
                                 </StackPanel>
                                 <StackPanel>

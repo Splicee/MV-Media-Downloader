@@ -276,6 +276,12 @@ namespace MVMediaStudio.Core
             ".mp3", ".m4a", ".aac", ".opus", ".ogg", ".flac", ".wav"
         };
 
+        internal static bool IsMediaPath(string path)
+        {
+            return !string.IsNullOrWhiteSpace(path) &&
+                MediaExtensions.Contains(Path.GetExtension(path));
+        }
+
         public static DirectPostProcessPlan Build(
             string inputPath,
             string preset,
@@ -294,7 +300,7 @@ namespace MVMediaStudio.Core
                 PreserveInput = preserveInput,
                 ProfileLabel = "Původní soubor"
             };
-            if (!MediaExtensions.Contains(Path.GetExtension(inputPath)))
+            if (!IsMediaPath(inputPath))
                 return plan;
 
             string mode = string.IsNullOrWhiteSpace(preset) ? "mp4-h264" : preset.ToLowerInvariant();
@@ -417,7 +423,7 @@ namespace MVMediaStudio.Core
                 args.AddRange(new[] { "-map", "0:v:0", "-map", "0:a?" });
                 if (subtitles)
                     args.AddRange(new[] { "-map", "0:s?" });
-                args.AddRange(new[] { "-c:v", "libvpx-vp9", "-crf", "30", "-b:v", "0", "-c:a", "libopus", "-b:a", "160k" });
+                args.AddRange(new[] { "-c:v", "libvpx-vp9", "-pix_fmt", "yuv420p", "-crf", "30", "-b:v", "0", "-c:a", "libopus", "-b:a", "160k" });
                 if (subtitles)
                     args.AddRange(new[] { "-c:s", "webvtt" });
                 AddScale(args, needsScale, maximumHeight);
@@ -429,7 +435,7 @@ namespace MVMediaStudio.Core
                     args.AddRange(new[] { "-map", "0:a?" });
                 if (subtitles && mode != "video-only")
                     args.AddRange(new[] { "-map", "0:s?" });
-                args.AddRange(new[] { "-c:v", "libx264", "-preset", "medium", "-crf", "21" });
+                args.AddRange(new[] { "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-crf", "21" });
                 AddScale(args, needsScale, maximumHeight);
 
                 if (mode == "mkv-best")
@@ -498,6 +504,7 @@ namespace MVMediaStudio.Core
             outputPath = UniquePath(options.OutputDirectory, Path.GetFileNameWithoutExtension(options.InputPath), format);
             List<string> args = new List<string>();
             args.AddRange(new[] { "-y", "-hide_banner", "-i", options.InputPath });
+            args.AddRange(new[] { "-map", "0:v:0", "-map", "0:a?", "-sn", "-map_metadata", "0", "-map_chapters", "0" });
 
             string codec = NormalizeCodec(options.Codec);
             if (codec == "h265")
@@ -506,6 +513,9 @@ namespace MVMediaStudio.Core
                 args.AddRange(new[] { "-c:v", "libaom-av1", "-cpu-used", "6" });
             else
                 args.AddRange(new[] { "-c:v", "libx264", "-preset", "medium" });
+            args.AddRange(new[] { "-pix_fmt", "yuv420p" });
+            if (codec == "h265" && (format == "mp4" || format == "mov"))
+                args.AddRange(new[] { "-tag:v", "hvc1" });
 
             if (string.Equals(options.RateControl, "bitrate", StringComparison.OrdinalIgnoreCase))
                 args.AddRange(new[] { "-b:v", NormalizeVideoBitrate(options.VideoBitrate) });

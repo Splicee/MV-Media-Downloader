@@ -68,11 +68,11 @@
 
                         <Grid
                             x:Name="ConversionListHost"
-                            MinHeight="230"
+                            MinHeight="200"
                             AllowDrop="True">
                             <DataGrid
                                 x:Name="ConversionGrid"
-                                MinHeight="230"
+                                MinHeight="200"
                                 MaxHeight="520"
                                 AlternationCount="2"
                                 AutoGenerateColumns="False"
@@ -86,7 +86,7 @@
                                 HeadersVisibility="Column"
                                 IsReadOnly="True"
                                 RowStyle="{StaticResource MediaDataGridRowStyle}"
-                                SelectionMode="Single"
+                                SelectionMode="Extended"
                                 SelectionUnit="FullRow"
                                 Style="{StaticResource MediaDataGridStyle}">
                                 <DataGrid.Columns>
@@ -166,7 +166,7 @@
                                         FontFamily="Segoe MDL2 Assets"
                                         FontSize="14"
                                         Text="&#xE74D;" />
-                                    <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Odebrat vybraný" />
+                                    <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Text="Odebrat vybrané" />
                                 </StackPanel>
                             </Button>
                             <Button x:Name="ConversionClearButton" Margin="8,0,0,0">
@@ -421,12 +421,37 @@
                     Margin="0,14,0,0"
                     Style="{StaticResource CardStyle}"
                     Visibility="Collapsed">
-                    <TextBox
-                        x:Name="ConversionLogBox"
-                        MaxHeight="260"
-                        AcceptsReturn="True"
-                        IsReadOnly="True"
-                        Style="{StaticResource ConsoleTextBoxStyle}" />
+                    <StackPanel>
+                        <Grid Margin="0,0,0,10">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Style="{StaticResource SmallHeadingStyle}"
+                                Text="Technický log konverze" />
+                            <Button
+                                x:Name="ConversionCopyLogButton"
+                                MinHeight="34"
+                                Padding="11,6"
+                                HorizontalAlignment="Right"
+                                ToolTip="Zkopírovat celý log konverze do schránky">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        FontFamily="Segoe MDL2 Assets"
+                                        FontSize="13"
+                                        Text="&#xE8C8;" />
+                                    <TextBlock Margin="7,0,0,0" VerticalAlignment="Center" Text="Kopírovat" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                        <TextBox
+                            x:Name="ConversionLogBox"
+                            MaxHeight="260"
+                            AcceptsReturn="True"
+                            IsReadOnly="True"
+                            IsUndoEnabled="False"
+                            SpellCheck.IsEnabled="False"
+                            Style="{StaticResource ConsoleTextBoxStyle}" />
+                    </StackPanel>
                 </Border>
             </StackPanel>
         </ScrollViewer>

@@ -57,16 +57,25 @@ namespace MVMediaStudio.Services
             using (Process process = new Process())
             {
                 process.StartInfo = CreateStartInfo(executable, arguments);
-                StringBuilder output = new StringBuilder();
                 process.Start();
-                output.Append(process.StandardOutput.ReadToEnd());
-                output.Append(process.StandardError.ReadToEnd());
+                Task<string> standardOutput = process.StandardOutput.ReadToEndAsync();
+                Task<string> standardError = process.StandardError.ReadToEndAsync();
                 if (!process.WaitForExit(timeoutMilliseconds))
                 {
-                    try { process.Kill(); } catch { }
+                    TerminateProcessTree(process);
+                    try { process.WaitForExit(3000); } catch { }
                     return "";
                 }
-                return output.ToString().Trim();
+                process.WaitForExit();
+                try
+                {
+                    Task.WaitAll(new Task[] { standardOutput, standardError }, 3000);
+                }
+                catch
+                {
+                    return "";
+                }
+                return (standardOutput.Result + standardError.Result).Trim();
             }
         }
 
